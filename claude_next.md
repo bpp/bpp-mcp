@@ -27,7 +27,7 @@ only while no release exists).
 | Install path (not in the original spec) | done |
 | 2. Core path, Anastrepha end-to-end | done |
 | 3. Completeness | done |
-| 4. Docs and packaging | done in the repo; **the first release (tag v0.1.0) is still to be pushed** |
+| 4. Docs and packaging | done; v0.1.0 released 2026-10-02 |
 | 5. Evaluation | **next**, not started |
 
 **Tools implemented (17):** check_environment, set_project (only with
@@ -43,9 +43,8 @@ search_docs, explain_diagnostic, smoke_test, run_command.
 **Verified:** over stdio, Anastrepha (10 loci, 5 species) goes inspect →
 convert → tree → A10 / A00 / A11 control file → lint valid → smoke test ok, in
 CI on Ubuntu and macOS (Apple Silicon). The owner has also tested it by hand in
-Claude Code on a Mac (Milestone 2 tools only). The Milestone 3 tests pass
-locally on macOS arm64 (116 passed, none skipped); they have not run in CI
-yet. All 13 defect cases of `reference/BPP-LINT-FIXES.md` are covered
+Claude Code on a Mac (Milestone 2 tools only). The Milestone 3 tests pass in
+CI on all four jobs (116 passed, none skipped). All 13 defect cases of `reference/BPP-LINT-FIXES.md` are covered
 end-to-end, and the privacy check covers every registered tool.
 
 ## Decisions already made (don't relitigate)
@@ -121,10 +120,9 @@ end-to-end, and the privacy check covers every registered tool.
 
 ## Next
 
-1. **Cut the first release** (owner): push `main`, check CI, optionally run
-   the release workflow by hand as a dry run, then
-   `git tag v0.1.0 && git push origin v0.1.0`. Afterwards run the `curl ... |
-   sh` line from the README on a clean account.
+1. **Release v0.1.0 is out** (https://github.com/bpp/bpp-mcp/releases/tag/v0.1.0),
+   and `install.sh` installs it. Still worth doing once (owner): the
+   `curl ... | sh` line from the README on a clean account or machine.
 2. **By hand in an interactive Claude Code session** (owner): the prompts as
    slash commands and the resources. A headless `claude -p` session against
    the built 0.1.0 package did drive check_environment, lint, set_keyword,
