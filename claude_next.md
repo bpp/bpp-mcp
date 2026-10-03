@@ -2,7 +2,7 @@
 
 Handoff notes for a Claude Code session picking this project up on another
 machine. Read `CLAUDE.md` (conventions) and `BPP-MCP-BUILD.md` (the full spec)
-too. Last updated 2026-10-03.
+too. Last updated 2026-10-02.
 
 ## Set up on a new machine
 
@@ -24,19 +24,27 @@ then `/mcp` in a session to confirm it is connected. End users install with
 | 1. Skeleton: runner, sandbox, check_environment, CI | done |
 | Install path (not in the original spec) | done |
 | 2. Core path, Anastrepha end-to-end | done |
-| 3. Completeness | **next** |
-| 4. Docs and packaging | partly done (install docs, CI install job) |
+| 3. Completeness | done |
+| 4. Docs and packaging | **next**; partly done (install docs, CI install job) |
 | 5. Evaluation | not started |
 
-**Tools implemented (11):** check_environment, set_project (only with
-`BPP_MCP_PROJECTS_DIR`), inspect_data, convert_data, build_species_tree,
-make_control_file, lint_control_file, lookup_docs, search_docs,
-explain_diagnostic, smoke_test.
+**Tools implemented (17):** check_environment, set_project (only with
+`BPP_MCP_PROJECTS_DIR`), inspect_data, convert_data, make_loci_bed,
+subset_loci, build_species_tree, read_species_tree, make_control_file,
+set_keyword, lint_control_file, upgrade_control_file, lookup_docs,
+search_docs, explain_diagnostic, smoke_test, run_command.
+
+**Resources:** `bpp://manual/{keyword}`, `bpp://examples` (the list),
+`bpp://examples/{name}`. **Prompts:** `novice_setup`, `upgrade_old_file`,
+`check_my_ctl`.
 
 **Verified:** over stdio, Anastrepha (10 loci, 5 species) goes inspect →
 convert → tree → A10 / A00 / A11 control file → lint valid → smoke test ok, in
 CI on Ubuntu and macOS (Apple Silicon). The owner has also tested it by hand in
-Claude Code on a Mac.
+Claude Code on a Mac (Milestone 2 tools only). The Milestone 3 tests pass
+locally on macOS arm64 (116 passed, none skipped); they have not run in CI
+yet. All 13 defect cases of `reference/BPP-LINT-FIXES.md` are covered
+end-to-end, and the privacy check covers every registered tool.
 
 ## Decisions already made (don't relitigate)
 
@@ -65,42 +73,50 @@ Claude Code on a Mac.
   (files exist, nloci, Imap vs tree species, phase digits). Both switch off
   automatically when a newer bpp-lint is pinned. If that release still has
   the bug, raise `max_affected`.
+- **set_keyword:** one line only. A keyword whose value continues over
+  following lines in the file (`ctlfile.continuation_lines`, e.g.
+  `species&tree`) is refused, and the model is told to remake the file. A
+  trailing comment on the line is kept (`ctlfile.set_value` now does this
+  for every caller). A new keyword is appended. There is no way to remove a
+  keyword yet. The speciesdelimitation workaround is not applied to values
+  the model sets; the re-lint and smoke test judge them.
+- **run_command:** returns the absolute folder and the full path of the bpp
+  binary the smoke test used, because `install-tools` does not put bpp on
+  the user's PATH. It states no BPP rules: it reports the file's `jobname`
+  and `threads` and sends the model to `lookup_docs` for `threads`.
+- **Temporary data checks grew by two** (in `workarounds.data_checks`, same
+  version gate): `imap_tags` (a `^tag` in the loci BPP reads with no Imap
+  line, BPP153) and `speciesdelimitation` (argument count per algorithm,
+  BPP017). Without them defect cases 1–3 and 7 lint "valid" and only the
+  smoke test catches them. `BPP-MCP-BUILD.md` lists them.
+- **Defect case 13** (`sub/rel.ctl`) is not a defect here: the server always
+  runs BPP from the control file's folder, so it lints valid and runs.
+- **upgrade_control_file** returns the lint result plus `server.upgrade`
+  (`fixes_available`, `diff`, `applied`, `backup`). `apply=true` refuses to
+  run when `<name>.bak` already exists, because `bpp-lint --fix` would
+  overwrite it. With nothing to fix it does nothing.
+- **Example resources** are only `*.ctl` files under
+  `$BPP_MCP_HOME/tools/*/examples`; the name is the path below `examples/`
+  joined with `-` (e.g. `frogs-A00.bpp.ctl`). Example data files are not
+  served.
 - **License:** AGPL-3.0-or-later, matching the other bpp tools.
 
-## Next: Milestone 3
+## Next: Milestone 4
 
-From `BPP-MCP-BUILD.md`, still to do:
+From `BPP-MCP-BUILD.md`:
 
-1. **`set_keyword(ctl, keyword, value)`**: check the keyword against
-   `docs.keywords()`, edit with `ctlfile.set_value` (keeps layout and
-   comments), re-lint, return the lint result. The server instructions
-   already refer to it.
-2. **`run_command(ctl)`**: does not run BPP. Returns the exact command
-   (`bpp --cfile <name>`), the folder to run it from (the control file's),
-   and a note on `threads` and HPC submission. The instructions already refer
-   to it.
-3. **`read_species_tree(path)`**: `bpp-tree --json --read`.
-4. **`upgrade_control_file(ctl, apply=False)`**: `bpp-lint --diff`, or
-   `--fix` (which writes `.bak`) only when `apply=True`. Test on
-   `legacy-3x.bpp.ctl`, which install-tools unpacks to
-   `~/.local/share/bpp-mcp/tools/bpp-lint-0.3.5/examples/`.
-5. **`make_loci_bed`** (`bpp-seqs windows`) and **`subset_loci`**
-   (`bpp-seqs extract`): check each subcommand's `--help` in bpp-seqs 0.2.0
-   first.
-6. **Resources:** `bpp://manual/{keyword}` (bpp-docs) and
-   `bpp://examples/{name}` (the examples unpacked under
-   `~/.local/share/bpp-mcp/tools/*/examples`).
-7. **Prompts:** `novice_setup`, `upgrade_old_file`, `check_my_ctl`.
-8. **Tests:** every defect case in `reference/BPP-LINT-FIXES.md` (table rows
-   1–13) on `tests/fixtures/tiny` must give a lint error or a
-   `server.data_checks` issue, plus `smoke_test` ok=false with BPP's error
-   line. Extend the privacy test (`assert_private` in `tests/test_e2e.py`)
-   to every tool. Narrow `needs_tools` so tests that need only bpp-lint and
-   bpp don't skip when bpp-seqs is missing.
+1. **README:** the tool list, resources and prompts; host registration for
+   Claude Desktop, Codex and Gemini CLI, checked against their current docs;
+   the privacy note; what the server does not do.
+2. **Releases:** PyPI or tagged releases, so `install.sh` stops tracking
+   `main`.
+3. **By hand in Claude Code:** the Milestone 3 tools, the prompts (as slash
+   commands) and the resources.
 
-Then Milestone 4 (README host registration for Claude Desktop, Codex and
-Gemini CLI, checked against their current docs; PyPI or tagged releases so
-`install.sh` stops tracking `main`) and Milestone 5 (evaluation harness).
+Then Milestone 5 (evaluation harness).
+
+Possible small additions, not in the spec: a way to remove a keyword from a
+control file; a `subset_loci` + `smoke_test` shortcut for very large data.
 
 ## Related changes made in other repos
 
@@ -117,6 +133,10 @@ Gemini CLI, checked against their current docs; PyPI or tagged releases so
 
 - **bpp-lint 0.3.5:** the A10/A11 template bug and missing data checks. The
   full fix spec is `reference/BPP-LINT-FIXES.md` (codes BPP150–156).
+- **bpp-lint 0.3.5, `--fix` on `legacy-3x.bpp.ctl`:** `outfile` and
+  `mcmcfile` both become `jobname`, leaving two `jobname` lines (lint then
+  warns BPP005, and BPP uses the last one). `--fix` also overwrites an
+  existing `.bak` without asking.
 - **bpp-lint, bpp-tree:** Linux binaries need glibc >= 2.34, so they won't
   run on RHEL 8 / older clusters. Build them statically as bpp-seqs and
   bpp-docs now do.

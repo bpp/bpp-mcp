@@ -11,7 +11,7 @@ import sys
 from mcp.server.mcpserver import MCPServer
 from mcp.types import ToolAnnotations
 
-from . import __version__, sandbox
+from . import __version__, prompts, resources, sandbox
 from .tools import ctl, data, docs, env, run, tree
 
 INSTRUCTIONS = """\
@@ -29,7 +29,8 @@ Rules:
 - Never write or edit a control file by hand. Create it with
   make_control_file, change it with set_keyword (or by calling
   make_control_file again with corrected arguments), and check it with
-  lint_control_file.
+  lint_control_file. For a file written for an older BPP, use
+  upgrade_control_file.
 - Never state BPP syntax, defaults or recommendations from memory. Look them
   up with lookup_docs or search_docs and quote the manual.
 - Ask the user about scientific choices; do not guess them. Explain each one
@@ -42,7 +43,8 @@ Rules:
   check_environment. Tools cannot reach files outside it.
 
 Workflow: check_environment -> inspect_data -> convert_data ->
-build_species_tree (show the user the tree diagram and confirm it) ->
+build_species_tree, or read_species_tree for a tree file the user already has
+(show the user the tree diagram and confirm it) ->
 make_control_file -> lint_control_file (repeat until server.status is "valid") ->
 smoke_test -> run_command.
 
@@ -60,16 +62,33 @@ mcp = MCPServer("bpp", title="BPP setup assistant", version=__version__,
 mcp.tool(annotations=READ_ONLY)(env.check_environment)
 mcp.tool(annotations=READ_ONLY)(data.inspect_data)
 mcp.tool(annotations=WRITES)(data.convert_data)
+mcp.tool(annotations=WRITES)(data.make_loci_bed)
+mcp.tool(annotations=WRITES)(data.subset_loci)
 mcp.tool(annotations=WRITES)(tree.build_species_tree)
+mcp.tool(annotations=WRITES)(tree.read_species_tree)
 mcp.tool(annotations=WRITES)(ctl.make_control_file)
+mcp.tool(annotations=WRITES)(ctl.set_keyword)
 mcp.tool(annotations=READ_ONLY)(ctl.lint_control_file)
+mcp.tool(annotations=WRITES)(ctl.upgrade_control_file)
 mcp.tool(annotations=READ_ONLY)(docs.lookup_docs)
 mcp.tool(annotations=READ_ONLY)(docs.search_docs)
 mcp.tool(annotations=READ_ONLY)(docs.explain_diagnostic)
 mcp.tool(annotations=WRITES)(run.smoke_test)
+mcp.tool(annotations=READ_ONLY)(run.run_command)
 if sandbox.current.projects_dir is not None:
     mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False,
                                          idempotentHint=True, openWorldHint=False))(env.set_project)
+
+mcp.resource("bpp://manual/{keyword}", name="manual", mime_type="text/plain",
+             description="The BPP manual's section for one control-file keyword.")(resources.manual)
+mcp.resource("bpp://examples", name="examples", mime_type="application/json",
+             description="List of the example control files.")(resources.examples)
+mcp.resource("bpp://examples/{name}", name="example", mime_type="text/plain",
+             description="An example control file shipped with bpp-lint or BPP.")(resources.example)
+
+mcp.prompt(title="Set up a BPP analysis from my data")(prompts.novice_setup)
+mcp.prompt(title="Upgrade an old BPP control file")(prompts.upgrade_old_file)
+mcp.prompt(title="Check my BPP control file")(prompts.check_my_ctl)
 
 
 USAGE = """\

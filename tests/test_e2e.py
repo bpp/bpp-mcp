@@ -80,10 +80,17 @@ from bpp_mcp import runner as _runner
 REAL_HOME = str(_install.home())
 FIXTURES = Path(__file__).parent / "fixtures"
 TOOLS = ["bpp-seqs", "bpp-tree", "bpp-lint", "bpp-docs", "bpp"]
-_missing = [t for t in TOOLS if _runner.find(t) is None]
-needs_tools = pytest.mark.skipif(
-    bool(_missing), reason=f"BPP tools not installed: {', '.join(_missing)} "
-                           "(run `bpp-mcp install-tools`)")
+
+
+def needs(*tools):
+    """Skip a test, with the reason, unless these tools are installed."""
+    missing = [t for t in tools if _runner.find(t) is None]
+    return pytest.mark.skipif(
+        bool(missing), reason=f"BPP tools not installed: {', '.join(missing)} "
+                              "(run `bpp-mcp install-tools`)")
+
+
+needs_tools = needs(*TOOLS)
 
 ANAS_JOINS = ("fraterculus+obliqua, distincta+fraterculus_obliqua, "
               "suspensa+distincta_fraterculus_obliqua, "
@@ -95,12 +102,13 @@ class Host:
     """Calls tools over a live stdio session and records every result text."""
 
     def __init__(self, session):
-        self.s, self.texts = session, []
+        self.s, self.texts, self.called = session, [], set()
 
     async def call(self, name, args, *, ok=True):
         res = await self.s.call_tool(name, args)
         text = res.content[0].text if res.content else ""
         self.texts.append(text)
+        self.called.add(name)
         assert res.is_error is (not ok), f"{name}: {text[:2000]}"
         try:
             return json.loads(text)
@@ -170,6 +178,42 @@ def test_anastrepha_core_path(anas):
             smoke = await h.call("smoke_test", {"ctl": ctl_path})
             assert smoke["ok"] is True, smoke
             results[analysis] = made
+        edit = await h.call("set_keyword", {"ctl": "runs/a00.ctl", "keyword": "nsample",
+                                            "value": "20000"})
+        assert edit["server"]["status"] == "valid", edit
+        assert edit["server"]["changed"]["new"] == "20000"
+        assert edit["server"]["changed"]["old"] not in (None, "20000")
+        err = await h.call("set_keyword", {"ctl": "runs/a00.ctl", "keyword": "nsamples",
+                                           "value": "1"}, ok=False)
+        assert "not a BPP control-file keyword" in err
+        err = await h.call("set_keyword", {"ctl": "runs/a00.ctl", "keyword": "species&tree",
+                                           "value": "1 A"}, ok=False)
+        assert "make_control_file" in err
+        bad = await h.call("set_keyword", {"ctl": "runs/a00.ctl", "keyword": "nsample",
+                                           "value": "many"})
+        assert bad["server"]["status"] == "invalid"            # the re-lint catches a bad value
+        await h.call("set_keyword", {"ctl": "runs/a00.ctl", "keyword": "nsample", "value": "20000"})
+        sub = await h.call("subset_loci", {"seqfile": "data/anas.txt", "out_prefix": "data/small",
+                                           "first": 3})
+        assert sub["server"]["nloci"] == 3 and (anas / "data" / "small.txt").is_file()
+        (anas / "old.nwk").write_text(tr["report"]["newick"] + "\n")
+        rd = await h.call("read_species_tree", {"path": "old.nwk", "imap": "data/anas.imap",
+                                                "out_prefix": "data/read"})
+        assert rd["report"]["newick"] == tr["report"]["newick"]
+        assert rd["report"]["individual_counts_filled"]
+        assert rd["server"]["diagram"] == tr["server"]["diagram"]
+        assert (anas / rd["server"]["stree_file"]).read_text() == \
+            (anas / tr["server"]["stree_file"]).read_text()
+        up = await h.call("upgrade_control_file", {"ctl": "runs/a00.ctl"})
+        assert up["server"]["upgrade"] == {"fixes_available": False, "diff": "", "applied": False}
+        bed = await h.call("make_loci_bed", {"input": "loci/sco_9239at7203.fasta",
+                                             "window_size": 200, "out": "data/loci.bed"})
+        assert bed["report"]["n_windows_emitted"] > 0 and (anas / "data" / "loci.bed").is_file()
+        how = await h.call("run_command", {"ctl": "runs/a00.ctl"})
+        assert how["directory"] == str((anas / "runs").resolve())
+        assert how["command"].endswith("bpp --cfile a00.ctl") and how["jobname"] == "a00"
+        assert how["shell"].startswith("cd '") and not list((anas / "runs").glob("a00.*txt"))
+        results["edited"] = (anas / "runs" / "a00.ctl").read_text()
         doc = await h.call("lookup_docs", {"keyword": "speciesdelimitation"})
         assert doc["report"]["found"] and "speciesdelimitation" in doc["report"]["syntax"]
         hits = await h.call("search_docs", {"query": "migration prior"})
@@ -178,38 +222,144 @@ def test_anastrepha_core_path(anas):
         assert "required" in exp["text"].lower()
         await h.call("lint_control_file", {"ctl": "../outside.ctl"}, ok=False)
 
+        results["tools"] = {t.name for t in (await h.s.list_tools()).tools}
+
     host = drive(anas, body)
+    assert host.called == results["tools"]          # so the privacy check covers every tool
     assert "speciesdelimitation = 1 0 2" in results["A10"]["text"]
     assert any(w["id"] == "speciesdelimitation-bare"
                for w in results["A11"]["server"].get("workarounds_applied", []))
     assert "workarounds_applied" not in results["A00"]["server"]
     assert not list(anas.rglob(".bpp-smoke-*"))
+    assert results["edited"] == re.sub(r"(nsample\s*=\s*)\d+", r"\g<1>20000", results["A00"]["text"])
     assert_private(host, FIXTURES / "anastrepha")
 
 
-@needs_tools
+def _tiny_variants(proj):
+    """The 13 cases of reference/BPP-LINT-FIXES.md: name -> (data check or None, BPP's error)."""
+    base = (proj / "ok.ctl").read_text()
+    imap = (proj / "tiny.imap").read_text()
+
+    def write(name, text):
+        (proj / name).parent.mkdir(exist_ok=True)
+        (proj / name).write_text(text)
+
+    def sd(value):
+        return base.replace("speciesdelimitation = 0", f"speciesdelimitation = {value}\n"
+                                                         "speciesmodelprior = 1")
+
+    (proj / "no_a1.imap").write_text(imap.replace("a1 A\n", ""))
+    (proj / "extra_sp.imap").write_text(imap.replace("c2 C", "c2 D"))
+    write("sd_bare.ctl", sd("1"))
+    write("sd_short.ctl", sd("1 0"))
+    write("sd_alg1_short.ctl", sd("1 1 2"))
+    write("sd_ok.ctl", sd("1 0 2"))
+    write("nofile.ctl", base.replace("seqfile = tiny.txt", "seqfile = missing.txt"))
+    write("nloci.ctl", base.replace("nloci = 2", "nloci = 3"))
+    write("imap_missing_tag.ctl", base.replace("tiny.imap", "no_a1.imap"))
+    write("imap_extra_sp.ctl", base.replace("tiny.imap", "extra_sp.imap"))
+    write("tree_sp_noimap.ctl", base.replace("A  B  C", "A  B  Cx").replace("((A,B),C)", "((A,B),Cx)"))
+    write("phase_ones.ctl", base + "phase = 1 1\n")
+    write("phase_zeros.ctl", base + "phase = 0 0\n")
+    write("counts.ctl", base.replace("2  2  2", "2  2  9"))
+    write("sub/rel.ctl", base.replace("tiny.txt", "../tiny.txt").replace("tiny.imap", "../tiny.imap"))
+    return {
+        "sd_bare.ctl": ("speciesdelimitation", "Erroneous format"),
+        "sd_short.ctl": ("speciesdelimitation", "Erroneous format"),
+        "sd_alg1_short.ctl": ("speciesdelimitation", "Erroneous format"),
+        "sd_ok.ctl": None,
+        "nofile.ctl": ("file_exists", "Unable to open file (missing.txt)"),
+        "nloci.ctl": ("nloci", "Expected 3 loci but found only 2"),
+        "imap_missing_tag.ctl": ("imap_tags", "Cannot find a mapping to species for tag a1"),
+        "imap_extra_sp.ctl": ("species_match", "Cannot find node with population label D"),
+        "tree_sp_noimap.ctl": ("species_match", "Cannot find node with population label C"),
+        "phase_ones.ctl": ("phase", "Number of digits in 'phase'"),
+        "phase_zeros.ctl": None,
+        "counts.ctl": None,
+        # Case 13 fails when BPP is started from the folder above. This server
+        # always runs it from the control file's folder, where the paths hold.
+        "sub/rel.ctl": None,
+    }
+
+
+@needs("bpp-lint", "bpp")
 def test_tiny_defects_caught(tmp_path, clean_env):
     proj = tmp_path / "tiny"
     shutil.copytree(FIXTURES / "tiny", proj)
-    base = (proj / "ok.ctl").read_text()
-    (proj / "nloci.ctl").write_text(base.replace("nloci = 2", "nloci = 3"))
-    (proj / "sd_bare.ctl").write_text(base.replace("speciesdelimitation = 0",
-                                                   "speciesdelimitation = 1\nspeciesmodelprior = 1"))
+    cases = _tiny_variants(proj)
+    assert len(cases) == 13
 
     async def body(h):
         ok = await h.call("lint_control_file", {"ctl": "ok.ctl"})
         assert ok["server"]["status"] == "valid"
         assert (await h.call("smoke_test", {"ctl": "ok.ctl"}))["ok"] is True
 
-        bad = await h.call("lint_control_file", {"ctl": "nloci.ctl"})
-        assert bad["report"]["status"] == "valid"            # bpp-lint 0.3.5 misses it...
-        assert bad["server"]["status"] == "invalid"          # ...the data checks do not
-        assert [i["check"] for i in bad["server"]["data_checks"]["issues"]] == ["nloci"]
-        smoke = await h.call("smoke_test", {"ctl": "nloci.ctl"})
-        assert smoke["ok"] is False and "Expected 3 loci" in smoke["error_line"]
-
-        smoke = await h.call("smoke_test", {"ctl": "sd_bare.ctl"})
-        assert smoke["ok"] is False and smoke["error_line"].startswith("Erroneous format")
+        for name, expect in cases.items():
+            lint = await h.call("lint_control_file", {"ctl": name})
+            smoke = await h.call("smoke_test", {"ctl": name})
+            errors = [i["check"] for i in lint["server"]["data_checks"]["issues"]
+                      if i["severity"] == "error"]
+            if expect is None:
+                assert lint["server"]["status"] == "valid" and not errors, (name, lint)
+                assert smoke["ok"] is True, (name, smoke)
+                continue
+            check, bpp_error = expect
+            caught = lint["report"]["counts"]["errors"] > 0 or check in errors
+            assert lint["server"]["status"] == "invalid" and caught, (name, lint)
+            assert smoke["ok"] is False and bpp_error in smoke["error_line"], (name, smoke)
 
     host = drive(proj, body)
     assert_private(host, FIXTURES / "tiny")
+
+
+def _lint_example(name):
+    hits = sorted(Path(REAL_HOME).glob(f"tools/bpp-lint-*/examples/{name}"))
+    return hits[-1] if hits else None
+
+
+@needs("bpp-lint", "bpp-docs")
+def test_upgrade_path(tmp_path, clean_env):
+    legacy = _lint_example("legacy-3x.bpp.ctl")
+    if legacy is None:
+        pytest.skip("bpp-lint's examples are not installed (run `bpp-mcp install-tools`)")
+    out = {}
+
+    async def body(h):
+        listing = json.loads((await h.s.read_resource("bpp://examples")).contents[0].text)
+        assert "legacy-3x.bpp.ctl" in [e["name"] for e in listing["examples"]]
+        res = await h.s.read_resource("bpp://examples/legacy-3x.bpp.ctl")
+        assert res.contents[0].text == legacy.read_text()
+        (tmp_path / "old.ctl").write_text(res.contents[0].text)
+
+        show = await h.call("upgrade_control_file", {"ctl": "old.ctl"})
+        up = show["server"]["upgrade"]
+        assert up["fixes_available"] and not up["applied"]
+        assert "-      diploid = 0 0 0 0" in up["diff"] and "+      phase = 0 0 0 0" in up["diff"]
+        assert show["server"]["status"] == "invalid"
+        assert (tmp_path / "old.ctl").read_text() == legacy.read_text()   # nothing written yet
+        assert not (tmp_path / "old.ctl.bak").exists()
+
+        done = await h.call("upgrade_control_file", {"ctl": "old.ctl", "apply": True})
+        assert done["server"]["upgrade"]["applied"]
+        assert done["server"]["upgrade"]["backup"] == "old.ctl.bak"
+        assert (tmp_path / "old.ctl.bak").read_text() == legacy.read_text()
+        assert "phase = 0 0 0 0" in (tmp_path / "old.ctl").read_text()
+        assert done["report"]["counts"]["errors"] < show["report"]["counts"]["errors"]
+        # What is left needs the user: the model reads it in the lint report.
+        assert done["server"]["status"] == "invalid" and done["report"]["diagnostics"]
+
+        again = await h.call("upgrade_control_file", {"ctl": "old.ctl", "apply": True})
+        assert again["server"]["upgrade"] == {"fixes_available": False, "diff": "", "applied": False}
+        assert (tmp_path / "old.ctl.bak").read_text() == legacy.read_text()   # backup untouched
+
+        man = await h.s.read_resource("bpp://manual/thetaprior")
+        assert "thetaprior" in man.contents[0].text
+        templates = (await h.s.list_resource_templates()).resource_templates
+        out["templates"] = sorted(t.uri_template for t in templates)
+        out["prompts"] = sorted(p.name for p in (await h.s.list_prompts()).prompts)
+        got = await h.s.get_prompt("upgrade_old_file", {"ctl": "old.ctl"})
+        assert "upgrade_control_file on `old.ctl`" in got.messages[0].content.text
+
+    drive(tmp_path, body)
+    assert out["templates"] == ["bpp://examples/{name}", "bpp://manual/{keyword}"]
+    assert out["prompts"] == ["check_my_ctl", "novice_setup", "upgrade_old_file"]

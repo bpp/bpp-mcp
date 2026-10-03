@@ -201,7 +201,11 @@ Known so far:
      lines) is at least `nloci`;
    - the species in the Imap equal the species in the tree;
    - when `phase` contains a `1`, its number of digits equals the number of
-     species.
+     species;
+   - every `^tag` in the loci BPP reads has an Imap line (BPP153; added in
+     Milestone 3 for defect case 7);
+   - `speciesdelimitation` has the number of arguments its algorithm takes
+     (BPP017; added in Milestone 3 for defect cases 1–3).
 
    Mark this list clearly as temporary. Remove it once bpp-lint reports these
    checks itself. This is the one place where BPP checks are allowed in

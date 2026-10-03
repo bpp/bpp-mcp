@@ -101,3 +101,41 @@ def test_paths_relative_to_ctl_folder(proj):
 def test_usedata_0_skips_seqfile(proj):
     path, text = variant(proj, "nodata.ctl", usedata="0", seqfile="missing.txt")
     assert workarounds.data_checks(path, text) == []
+
+
+@pytest.mark.parametrize("value,needle", [
+    ("1", "algorithm number"),
+    ("1 0", "exactly 1 number after it, found 0"),
+    ("1 1 2", "exactly 2 numbers after it, found 1"),
+    ("1 2 2", "algorithm number"),
+    ("0 1", "nothing may follow 0"),
+])
+def test_speciesdelimitation_arity(proj, value, needle):
+    path, text = variant(proj, "sd.ctl", speciesdelimitation=value)
+    issues = workarounds.data_checks(path, text)
+    assert [(i["check"], i["severity"]) for i in issues] == [("speciesdelimitation", "error")]
+    assert needle in issues[0]["message"]
+
+
+@pytest.mark.parametrize("value", ["0", "1 0 2", "1 1 2 1", "1 0 5   * eps"])
+def test_speciesdelimitation_ok(proj, value):
+    path, text = variant(proj, "sd.ctl", speciesdelimitation=value)
+    assert workarounds.data_checks(path, text) == []
+
+
+def test_imap_missing_tag(proj):
+    (proj / "short.imap").write_text((proj / "tiny.imap").read_text().replace("a1 A\n", ""))
+    path, text = variant(proj, "x.ctl", Imapfile="short.imap")
+    issues = workarounds.data_checks(path, text)
+    assert [(i["check"], i["severity"]) for i in issues] == [("imap_tags", "error")]
+    assert "1 sequence tag(s)" in issues[0]["message"] and ": a1 (" in issues[0]["message"]
+
+
+def test_imap_tags_only_in_loci_bpp_reads(proj):
+    seq = (proj / "tiny.txt").read_text()
+    first, second = seq.split("\n\n", 1)
+    (proj / "odd.txt").write_text(first + "\n\n" + second.replace("^c2", "^zz"))
+    path, text = variant(proj, "two.ctl", seqfile="odd.txt")
+    assert [i["check"] for i in workarounds.data_checks(path, text)] == ["imap_tags"]
+    path, text = variant(proj, "one.ctl", seqfile="odd.txt", nloci="1")   # locus 2 is not read
+    assert [i["check"] for i in workarounds.data_checks(path, text)] == ["nloci"]

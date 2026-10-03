@@ -1,7 +1,8 @@
-"""smoke_test: a short BPP run on a copy of the control file."""
+"""smoke_test: a short BPP run on a copy of the control file. run_command: how to start the real one."""
 from __future__ import annotations
 
 import re
+import shlex
 import shutil
 import tempfile
 from pathlib import Path
@@ -29,8 +30,8 @@ def smoke_test(ctl: str, nsample: int = 500, burnin: int = 200, timeout_s: int =
       fatal message, and `output_tail`); null if still running at `timeout_s`
       without an error, which means BPP read the file and data and started
       the MCMC.
-    Only when lint is valid AND ok is not false is the file ready. Then
-    explain how to run the full analysis.
+    Only when lint is valid AND ok is not false is the file ready. Then call
+    run_command to tell the user how to run the full analysis.
     """
     src = sandbox.resolve(ctl, must_exist=True)
     if not src.is_file():
@@ -71,3 +72,47 @@ def smoke_test(ctl: str, nsample: int = 500, burnin: int = 200, timeout_s: int =
     if cut:
         out["server"] = {"truncated": [f"output_tail: last {TAIL} chars"]}
     return out
+
+
+def run_command(ctl: str) -> dict:
+    """How the user starts the full analysis themselves. Does NOT run BPP.
+
+    Call last, once lint_control_file reports server.status "valid" and
+    smoke_test did not fail. This server never starts the real run, which can
+    take hours or days; give the user the command to run in their own
+    terminal or job script.
+
+    Read in the result:
+    - `directory`: the control file's folder (absolute). BPP must be started
+      from it, because the data paths in the file are relative to it.
+    - `command`: the BPP command line, with the full path of the same bpp
+      binary smoke_test used.
+    - `shell`: both as one line to paste into a terminal.
+    - `jobname`, `threads`: the file's current values (null if unset). Output
+      files are named from `jobname`. Look up 'threads' with lookup_docs
+      before advising on it, and change it with set_keyword.
+    - `notes`: what to tell the user about long runs and clusters.
+    """
+    path = sandbox.resolve(ctl, must_exist=True)
+    if not path.is_file():
+        raise ToolError(f"'{ctl}' is not a file")
+    text = path.read_text(errors="replace")
+    command = shlex.join([runner.require("bpp"), "--cfile", path.name])
+    return {
+        "control_file": sandbox.rel(path),
+        "directory": str(path.parent),
+        "command": command,
+        "shell": f"cd {shlex.quote(str(path.parent))} && {command}",
+        "jobname": ctlfile.get(text, "jobname"),
+        "threads": ctlfile.get(text, "threads"),
+        "notes": [
+            "Run the command from `directory`; started anywhere else, BPP will not find "
+            "the data files.",
+            "The run can take a long time. So that it survives a closed terminal, start it "
+            "inside tmux or screen, or with nohup and the output redirected to a log file.",
+            "On an HPC cluster, put the `cd` and the command in a job script for the "
+            "scheduler (e.g. Slurm's sbatch) and request as many CPUs as `threads` uses. "
+            "The bpp path above is for this computer; on the cluster use the bpp installed there.",
+            "This server did not start the analysis and cannot monitor it.",
+        ],
+    }

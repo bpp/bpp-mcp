@@ -53,3 +53,19 @@ def test_set_rejects_multiline():
 def test_species():
     assert ctlfile.species(CTL) == ["A", "B", "C"]
     assert ctlfile.species("seed = 1\n") is None
+
+
+def test_set_keeps_trailing_comment():
+    out = ctlfile.set_value(CTL, "seqfile", "other.txt")
+    assert "       seqfile = other.txt   * trailing comment\n" in out
+    assert ctlfile.set_value("seed = #old\n", "seed", "5") == "seed = 5 #old\n"
+
+
+def test_continuation_lines():
+    assert ctlfile.continuation_lines(CTL, "species&tree") == 2
+    assert ctlfile.continuation_lines(CTL, "nloci") == 0
+    assert ctlfile.continuation_lines(CTL, "seed") == 0
+    assert ctlfile.continuation_lines(CTL, "Imapfile") == 0     # next line is a comment
+    assert ctlfile.continuation_lines(CTL, "printlocus") == 0   # last line
+    assert ctlfile.continuation_lines(CTL, "missing") == 0
+    assert ctlfile.continuation_lines("a = 1\n\n  2 2\n", "a") == 0  # blank line ends it

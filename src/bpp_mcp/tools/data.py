@@ -1,4 +1,4 @@
-"""inspect_data, convert_data: wrap bpp-seqs."""
+"""inspect_data, convert_data, make_loci_bed, subset_loci: wrap bpp-seqs."""
 from __future__ import annotations
 
 from collections import Counter
@@ -100,4 +100,118 @@ def convert_data(files: list[str], imap: str, out_prefix: str, phasing: str = "i
     summary = (out.get("report") or {}).get("summary") or {}
     if "n_loci_passed" in summary:
         out.setdefault("server", {})["nloci"] = summary["n_loci_passed"]
+    return out
+
+
+def make_loci_bed(input: str, window_size: int, out: str, step: int | None = None,
+                  include_chrom: list[str] | None = None,
+                  exclude_chrom: list[str] | None = None, autosomes_only: bool = False,
+                  skip_edges: int | None = None, exclude_regions: str | None = None,
+                  min_spacing: int | None = None, n_loci: int | None = None,
+                  seed: int | None = None, overwrite: bool = False) -> dict:
+    """Make a BED file of candidate loci by tiling a genome into windows (bpp-seqs windows).
+
+    Use when the user has BAM/CRAM or gVCF data but no BED file saying which
+    regions are the loci (inspect_data then lists a BED under `missing`).
+    `input` is anything holding chromosome names and lengths: the reference
+    FASTA, a BAM/CRAM or a VCF/gVCF. `out` is the BED file to write; pass it
+    to inspect_data and convert_data with the other files.
+
+    Ask the user for the locus size and spacing; do not choose them yourself.
+    All options are passed to bpp-seqs unchanged:
+    - `window_size`: locus length in bp. `step`: distance between window
+      starts (default: window_size, so windows do not overlap).
+    - `min_spacing`: least distance in bp between kept loci on a chromosome.
+    - `n_loci`: sample this many windows at random (`seed` fixes the sample);
+      omit to keep them all.
+    - `include_chrom` / `exclude_chrom`: chromosome names. `autosomes_only`:
+      skip sex chromosomes, mitochondria and unplaced contigs (by name).
+    - `skip_edges`: drop this many bp at both ends of each chromosome.
+    - `exclude_regions`: a BED file of intervals to avoid.
+    - `overwrite`: an existing file is refused unless true. Ask the user.
+
+    Read in the report: `n_windows_emitted` (loci written) and the counts
+    before it, which show what each filter removed. Next: inspect_data.
+    """
+    root = sandbox.current.require_root()
+    dst = sandbox.resolve(out)
+    if dst.is_dir() or dst.suffix == "":
+        raise ToolError("`out` must be a file name such as 'loci.bed'")
+    if dst.exists() and not overwrite:
+        raise ToolError(f"{sandbox.rel(dst)} already exists. Ask the user whether to replace it "
+                        "(then call again with overwrite=true) or choose another name.")
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    args = ["windows", sandbox.rel(sandbox.resolve(input, must_exist=True)),
+            "--window-size", str(window_size), "--out", sandbox.rel(dst), "--json"]
+    for flag, val in (("--step", step), ("--skip-edges", skip_edges),
+                      ("--min-spacing", min_spacing), ("--n-loci", n_loci), ("--seed", seed)):
+        if val is not None:
+            args += [flag, str(val)]
+    for flag, names in (("--include-chrom", include_chrom), ("--exclude-chrom", exclude_chrom)):
+        if names:
+            args += [flag, ",".join(names)]
+    if autosomes_only:
+        args.append("--autosomes-only")
+    if exclude_regions:
+        args += ["--exclude-regions", sandbox.rel(sandbox.resolve(exclude_regions, must_exist=True))]
+    out_ = runner.run_tool("bpp-seqs", args, cwd=root, timeout=600)
+    if out_["exit_code"] == 0:
+        out_.setdefault("server", {})["bed_file"] = sandbox.rel(dst)
+    return out_
+
+
+def subset_loci(seqfile: str, out_prefix: str, first: int | None = None, last: int | None = None,
+                range: str | None = None, loci: list[str] | None = None,
+                chrom: str | None = None, min_sites: int | None = None,
+                max_sites: int | None = None, invert: bool = False, imap: str | None = None,
+                overwrite: bool = False) -> dict:
+    """Write a new BPP seqfile holding a subset of the loci of an existing one (bpp-seqs extract).
+
+    Use to make a small data set for a trial run, or to drop or keep
+    particular loci. `seqfile` is a PREFIX.txt from convert_data. Writes
+    `out_prefix`.txt, plus .imap and .loci.tsv when the input has them next to
+    it. The original files are not changed.
+
+    Selection (at least one; passed to bpp-seqs unchanged):
+    - `first` / `last`: the first or last N loci. `range`: 1-based positions
+      such as "1-50" or "1-10,41-50". These three add together.
+    - `loci`: locus names. `chrom`: loci from this chromosome (needs the
+      .loci.tsv). `min_sites` / `max_sites`: by alignment length.
+    - Different kinds of selection combine with AND. `invert`: keep the loci
+      that do NOT match.
+    - `imap`: use this Imap instead of the one next to the seqfile.
+    - `overwrite`: existing outputs are refused unless true. Ask the user.
+
+    Read in the report: `n_loci_input`, `n_loci_kept` (also `server.nloci`:
+    the nloci value for make_control_file with the new seqfile) and
+    `output_files`. Next: make_control_file with the new seqfile, or
+    set_keyword for seqfile and nloci on an existing control file.
+    """
+    root = sandbox.current.require_root()
+    src = sandbox.resolve(seqfile, must_exist=True)
+    selection: list[str] = []
+    for flag, val in (("--first", first), ("--last", last), ("--range", range),
+                      ("--chrom", chrom), ("--min-sites", min_sites), ("--max-sites", max_sites)):
+        if val is not None:
+            selection += [flag, str(val)]
+    if loci:
+        selection += ["--loci", ",".join(loci)]
+    if not selection:
+        raise ToolError("give at least one selection: first, last, range, loci, chrom, "
+                        "min_sites or max_sites")
+    prefix = sandbox.resolve(out_prefix)
+    dst = prefix.with_name(prefix.name + ".txt")
+    if dst.exists() and not overwrite:
+        raise ToolError(f"{sandbox.rel(dst)} already exists. Ask the user whether to replace "
+                        "it (then call again with overwrite=true) or choose another out_prefix.")
+    prefix.parent.mkdir(parents=True, exist_ok=True)
+    args = ["extract", sandbox.rel(src), "--out", sandbox.rel(prefix), "--json", *selection]
+    if invert:
+        args.append("--invert")
+    if imap:
+        args += ["--imap", sandbox.rel(sandbox.resolve(imap, must_exist=True))]
+    out = runner.run_tool("bpp-seqs", args, cwd=root, timeout=3600)
+    kept = (out.get("report") or {}).get("n_loci_kept")
+    if kept is not None:
+        out.setdefault("server", {})["nloci"] = kept
     return out
