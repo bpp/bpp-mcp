@@ -41,7 +41,7 @@ Prebuilt tool releases currently cover:
 | bpp-seqs | yes | – | – | – |
 | bpp-tree | yes | – | yes | yes |
 | bpp-lint | yes | – | yes | yes |
-| bpp-docs | – | – | – | – |
+| bpp-docs | yes | – | yes | yes |
 
 For anything missing, build the tool from its repository and put it on PATH
 (or set `BPP_MCP_<TOOL>`, e.g. `BPP_MCP_BPP_DOCS=/path/to/bpp-docs`). The

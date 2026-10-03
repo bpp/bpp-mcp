@@ -30,9 +30,13 @@
   },
   "bpp-docs": {
     "repo": "bpp/bpp-docs",
-    "tag": null,
+    "tag": "v0.1.0",
     "version": "0.1.0",
-    "assets": {}
+    "assets": {
+      "linux-x86_64": {"name": "bpp-docs-0.1.0-linux-x86_64.tar.gz", "sha256": "5042c35ae55be6df019ff0b39ddd0c4bf1b462c28091c3726c61ebd0a0e6b097"},
+      "macos-arm64": {"name": "bpp-docs-0.1.0-macos-arm64.tar.gz", "sha256": "6c3defafef8f30fbf77e8b316f22ea1292e54cf38d0f1d28f24b6d1e5775ecc0"},
+      "macos-x86_64": {"name": "bpp-docs-0.1.0-macos-x86_64.tar.gz", "sha256": "6335f692be5cf77db1a7d1e3300171b0e7b1eb4b920041aaafbf7c00cfd8a6ee"}
+    }
   },
   "bpp": {
     "repo": "bpp/bpp",
