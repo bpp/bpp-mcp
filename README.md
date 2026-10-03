@@ -38,7 +38,7 @@ Prebuilt tool releases currently cover:
 | Tool | Linux x86_64 | Linux aarch64 | macOS arm64 | macOS x86_64 |
 |---|---|---|---|---|
 | bpp | yes | yes | yes | yes |
-| bpp-seqs | yes | – | – | – |
+| bpp-seqs | yes | – | yes | yes |
 | bpp-tree | yes | – | yes | yes |
 | bpp-lint | yes | – | yes | yes |
 | bpp-docs | yes | – | yes | yes |
