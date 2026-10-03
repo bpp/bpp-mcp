@@ -70,6 +70,22 @@ class Sandbox:
             raise ToolError(f"'{p}' does not exist in the project directory {root}")
         return q
 
+    def expand(self, patterns: list[str]) -> list[Path]:
+        """Resolve paths, expanding glob patterns (e.g. "loci/*.fa") inside the root."""
+        root = self.require_root()
+        out: list[Path] = []
+        for p in patterns:
+            if any(c in p for c in "*?["):
+                if Path(p).is_absolute() or ".." in Path(p).parts:
+                    raise ToolError(f"glob '{p}' must be relative to the project and stay inside it")
+                hits = sorted(q for q in root.glob(p) if q.is_file())
+                if not hits:
+                    raise ToolError(f"no files in the project match '{p}'")
+                out.extend(self.resolve(str(q)) for q in hits)
+            else:
+                out.append(self.resolve(p, must_exist=True))
+        return list(dict.fromkeys(out))
+
     def rel(self, q: Path) -> str:
         """Display form of a resolved path: relative to the root."""
         root = self.require_root()
@@ -100,3 +116,11 @@ current = Sandbox.from_env()
 
 def resolve(p: str, *, must_exist: bool = False) -> Path:
     return current.resolve(p, must_exist=must_exist)
+
+
+def expand(patterns: list[str]) -> list[Path]:
+    return current.expand(patterns)
+
+
+def rel(q: Path) -> str:
+    return current.rel(q)

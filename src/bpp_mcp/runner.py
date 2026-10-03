@@ -123,36 +123,36 @@ def redact(s: str) -> str:
 
 
 def sanitize(obj: Any, notes: list[str], *, max_list: int = MAX_LIST,
-             max_str: int = MAX_STR, _path: str = "") -> Any:
+             max_str: int = MAX_STR, redact_seqs: bool = True, _path: str = "") -> Any:
     """Copy of ``obj`` with long lists/strings cut and sequences redacted.
 
     Each cut is recorded in ``notes`` as a human-readable message.
     """
+    kw = dict(max_list=max_list, max_str=max_str, redact_seqs=redact_seqs)
     if isinstance(obj, str):
-        s = redact(obj)
+        s = redact(obj) if redact_seqs else obj
         if len(s) > max_str:
             notes.append(f"{_path or 'value'}: string cut from {len(s)} to {max_str} chars")
             s = s[:max_str]
         return s
     if isinstance(obj, dict):
-        return {k: sanitize(v, notes, max_list=max_list, max_str=max_str,
-                            _path=f"{_path}.{k}" if _path else str(k))
+        return {k: sanitize(v, notes, **kw, _path=f"{_path}.{k}" if _path else str(k))
                 for k, v in obj.items()}
     if isinstance(obj, (list, tuple)):
         items = list(obj)
         if len(items) > max_list:
             notes.append(f"{_path or 'list'}: showing {max_list} of {len(items)} items")
             items = items[:max_list]
-        return [sanitize(v, notes, max_list=max_list, max_str=max_str, _path=f"{_path}[{i}]")
-                for i, v in enumerate(items)]
+        return [sanitize(v, notes, **kw, _path=f"{_path}[{i}]") for i, v in enumerate(items)]
     return obj
 
 
-def sanitize_capped(obj: Any, notes: list[str], limit: int = MAX_RESULT) -> Any:
+def sanitize_capped(obj: Any, notes: list[str], limit: int = MAX_RESULT, *,
+                    max_str: int = MAX_STR, redact_seqs: bool = True) -> Any:
     """sanitize(), tightening the caps until the serialized result fits ``limit``."""
-    for max_list, max_str in ((MAX_LIST, MAX_STR), (20, 500), (5, 200)):
+    for max_list, mstr in ((MAX_LIST, max_str), (20, min(max_str, 500)), (5, 200)):
         trial: list[str] = []
-        out = sanitize(obj, trial, max_list=max_list, max_str=max_str)
+        out = sanitize(obj, trial, max_list=max_list, max_str=mstr, redact_seqs=redact_seqs)
         if len(json.dumps(out)) <= limit:
             notes.extend(trial)
             return out
@@ -160,7 +160,7 @@ def sanitize_capped(obj: Any, notes: list[str], limit: int = MAX_RESULT) -> Any:
     return None
 
 
-def json_result(res: RunResult) -> dict:
+def json_result(res: RunResult, *, max_str: int = MAX_STR, redact_seqs: bool = True) -> dict:
     """Standard tool result for a CLI run with --json.
 
     ``{"exit_code", "report", "stderr"?, "server"?}``: the parsed report passes
@@ -174,7 +174,8 @@ def json_result(res: RunResult) -> dict:
     notes: list[str] = []
     text = res.stdout.strip()
     try:
-        out["report"] = sanitize_capped(json.loads(text), notes) if text else None
+        out["report"] = (sanitize_capped(json.loads(text), notes, max_str=max_str,
+                                         redact_seqs=redact_seqs) if text else None)
     except json.JSONDecodeError:
         out["report"] = None
         out["stdout"], cut = cap_text(res.stdout)
@@ -187,3 +188,26 @@ def json_result(res: RunResult) -> dict:
     if notes:
         out["server"] = {"truncated": notes}
     return out
+
+
+def run_tool(name: str, args: list[str], *, cwd: Path, timeout: float = DEFAULT_TIMEOUT,
+             max_str: int = MAX_STR, redact_seqs: bool = True) -> dict:
+    """require(name), run it with ``args`` in ``cwd``, and return json_result()."""
+    return json_result(run([require(name), *args], cwd=cwd, timeout=timeout),
+                       max_str=max_str, redact_seqs=redact_seqs)
+
+
+_versions: dict[tuple[str, float], str | None] = {}
+
+
+def tool_version(name: str) -> str | None:
+    """Installed version of ``name`` (None if missing or unreadable); cached per binary."""
+    from .tools.env import parse_version
+    path = find(name)
+    if not path:
+        return None
+    key = (path, os.stat(path).st_mtime)
+    if key not in _versions:
+        r = run([path, "--version"], cwd=Path.cwd(), timeout=20)
+        _versions[key] = parse_version(name, r.stdout + r.stderr)
+    return _versions[key]

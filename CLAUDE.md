@@ -25,8 +25,14 @@ the tool instead.
   bpp-mcp and the tools in one command.
 - `src/bpp_mcp/tools/*.py`: tool functions. Docstrings are written for the
   model: what it does, when to call it, what to do next, key output fields.
-- `src/bpp_mcp/workarounds.py` (milestone 2): every patch for an upstream bug,
-  with the issue, the version where it was seen, and a version gate.
+- `src/bpp_mcp/workarounds.py`: every patch for an upstream bug, with the bug,
+  the last affected version (`max_affected`) and a version gate. The
+  temporary `data_checks` there are the only BPP checks allowed in Python.
+- `src/bpp_mcp/ctlfile.py`: generic `keyword = value` line access (get, set,
+  species list). No knowledge of what keywords mean.
+- Tools run with `cwd` = project root (data, tree) or the control file's
+  folder (lint, smoke test), and get root-relative paths, so reports never
+  show absolute paths. Control files hold data paths relative to themselves.
 
 ## Conventions
 
@@ -45,8 +51,10 @@ python3 -m venv .venv && .venv/bin/pip install -e '.[test]'
 .venv/bin/pytest -q
 ```
 
-Unit tests need no binaries. End-to-end tests drive the server over stdio and
-skip with a reason when a needed binary is missing. Binary locations can be
+Unit tests need no binaries (fake scripts stand in). End-to-end tests drive
+the server over stdio with the tools from `bpp-mcp install-tools`, and skip
+with a reason when one is missing. Fixtures: `tests/fixtures/anastrepha`
+(real data, CC0) and `tests/fixtures/tiny` (from BPP-LINT-FIXES.md). Binary locations can be
 overridden with `BPP_MCP_<NAME>` (e.g. `BPP_MCP_BPP_LINT=/path/to/bpp-lint`).
 
 Commit at each milestone, only when its tests pass.

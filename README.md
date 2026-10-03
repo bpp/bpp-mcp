@@ -5,7 +5,7 @@ sequence data to a validated BPP control file that has passed a short test
 run. It wraps the bpp command-line tools (`bpp-seqs`, `bpp-tree`, `bpp-lint`,
 `bpp-docs`, `bpp`) and never runs long analyses itself.
 
-Status: early development (milestone 1 of 5). See `BPP-MCP-BUILD.md`.
+Status: early development (milestone 2 of 5: the core path works). See `BPP-MCP-BUILD.md`.
 
 ## Install
 
