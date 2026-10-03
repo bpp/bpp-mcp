@@ -1,0 +1,20 @@
+# Unphased diploid data: the phase keyword.
+request: >
+  I have frog sequence data already in BPP format, frogs.txt with frogs.Imap.txt, and I want divergence times and population sizes for the four species. The sequences are diploid genotypes, if that matters.
+examples:
+  - {tool: bpp, path: frogs/frogs.txt}
+  - {tool: bpp, path: frogs/frogs.Imap.txt}
+decisions:
+  - frogs.txt is already a BPP sequence file with 5 loci and frogs.Imap.txt is its Imap. Use them as they are; do not convert or filter them.
+  - 'Four species: K, C, L and H. K and C are sisters; L is sister to that pair; H is the outgroup. The species and the tree are fixed; I want parameter estimates only.'
+  - Every sequence, in all four species, is an unphased diploid genotype with heterozygous sites written as ambiguity codes (Y, R, M, K, S, W). I want BPP to treat all four species as unphased.
+  - I do not want to model gene flow.
+  - I have no opinion on chain length; whatever the assistant recommends as a sensible start is fine.
+  - 'File and job names: anything sensible is fine.'
+expect:
+  analysis: A00
+  species: [K, C, L, H]
+  newick: "(((K,C),L),H);"
+  keywords:
+    nloci: 5
+    phase: {regex: '1( +1){3}'}

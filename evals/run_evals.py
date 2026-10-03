@@ -1,12 +1,15 @@
 """Run the evaluation scenarios through a model, or write the report.
 
+    python evals/run_evals.py run --model claude-code:opus --user-model claude-code:haiku
     python evals/run_evals.py run --model claude-opus-5-5
     python evals/run_evals.py run --model claude-haiku-4-5 --tasks 'anas_*' --trials 3
     python evals/run_evals.py report evals/runs/* > evals/RESULTS.md
 
-`run` needs the BPP tools (bpp-mcp install-tools), `pip install -e '.[evals]'`
-and, for Claude models, credentials for the Anthropic API. It spends real
-money: every scenario is a multi-turn conversation between two models.
+`run` needs the BPP tools (bpp-mcp install-tools) and `pip install -e '.[evals]'`.
+A `claude-code:` model runs Claude Code in headless mode on your claude.ai
+login and counts against your subscription's usage limits. A bare model name
+uses the Anthropic API and is billed per token. Either way every scenario is
+a multi-turn conversation between two models.
 """
 from __future__ import annotations
 
@@ -18,6 +21,7 @@ import json
 import shutil
 import sys
 import tempfile
+import traceback
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -45,7 +49,7 @@ async def run(args: argparse.Namespace) -> int:
         raise SystemExit(f"BPP tools missing or too old: {', '.join(missing)} "
                          "(run `bpp-mcp install-tools`)")
     scenarios = select(args.tasks)
-    assistant = harness.make_model(args.model, effort=args.effort)
+    assistant = harness.make_assistant(args.model, effort=args.effort)
     user = harness.make_model(args.user_model)
     stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     out = Path(args.out) if args.out else RUNS / f"{stamp}-{assistant.name}"
@@ -63,7 +67,8 @@ async def run(args: argparse.Namespace) -> int:
             try:
                 res = await harness.run_scenario(sc, assistant, user, root, limits, log)
             except Exception as e:               # one broken scenario must not stop the run
-                res = {"id": sc["id"], "error": f"{type(e).__name__}: {e}"}
+                res = {"id": sc["id"], "error": f"{type(e).__name__}: {e}",
+                       "traceback": traceback.format_exc()}
             res["trial"] = trial
             (out / f"{sc['id']}.{trial}.json").write_text(json.dumps(res, indent=2, default=str))
             if args.keep_projects and root.exists():
@@ -126,17 +131,19 @@ def report(run_dirs: list[Path]) -> str:
         if n:
             def count(f) -> int:
                 return sum(1 for r in scored if f(r["score"]))
+            made = count(lambda s: "lint_valid" in s)
             lines += [
-                f"- Lint valid: {count(lambda s: s.get('lint_valid'))}/{n}. Test run ok: "
-                f"{count(lambda s: s.get('smoke_ok'))}/{n}. All scientific choices as the user "
-                f"decided: {count(lambda s: all(s['choices'].values()))}/{n}.",
+                f"- Of the {made} that should end with a control file: lint valid "
+                f"{count(lambda s: s.get('lint_valid'))}/{made}, test run ok "
+                f"{count(lambda s: s.get('smoke_ok'))}/{made}. All expected choices right: "
+                f"{count(lambda s: all(s['choices'].values()))}/{n}.",
                 f"- Wrote a control file by hand: {count(lambda s: s['hand_edits'])}/{n}. Set a "
                 f"keyword before looking it up: {count(lambda s: s['undocumented_keywords'])}/{n}. "
-                f"Wrote `keyword = value` in a reply before looking it up (also counts quoting "
-                f"a file): {count(lambda s: s.get('stated_without_lookup'))}/{n}.",
+                f"Wrote `keyword = value` in a reply before any tool had shown that keyword: "
+                f"{count(lambda s: s.get('stated_without_lookup'))}/{n}.",
                 f"- Mean tool calls {sum(r['score']['tool_calls'] for r in scored) / n:.1f}, mean "
-                f"user turns {sum(r['score']['user_turns'] for r in scored) / n:.1f}. Estimated "
-                f"API cost ${total:.2f} (${total / n:.2f} per conversation).",
+                f"user turns {sum(r['score']['user_turns'] for r in scored) / n:.1f}. Cost at API "
+                f"prices, estimated: ${total:.2f} (${total / n:.2f} per conversation).",
                 "",
                 "| Scenario | Trial | Pass | Lint | Test run | Choices wrong | By hand | Set, not looked up "
                 "| Tool calls | User turns | Ended |",

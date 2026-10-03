@@ -14,15 +14,28 @@ setup is finished, or at a limit of user turns or tool calls.
 ```
 pip install -e '.[evals]'        # anthropic + pyyaml
 bpp-mcp install-tools
-python evals/run_evals.py run --model claude-opus-5-5 -v
-python evals/run_evals.py run --model claude-haiku-4-5 --tasks 'anas_*' --trials 3
+python evals/run_evals.py run --model claude-code:opus --user-model claude-code:haiku -v
+python evals/run_evals.py run --model claude-opus-5-5 --tasks 'anas_*' --trials 3
 python evals/run_evals.py report evals/runs/* > evals/RESULTS.md
 ```
 
-`run` spends real money (about 20 model requests per scenario for the
-assistant, plus the simulated user). It writes one JSON file per conversation,
-with the full transcript, under `evals/runs/` (not committed), and prints the
-report. Claude models need Anthropic API credentials in the environment.
+There are two ways to supply the models:
+
+- `--model claude-code:opus --user-model claude-code:haiku` runs Claude Code
+  in headless mode (`claude -p`) on your claude.ai login. It counts against
+  your subscription's usage limits instead of being billed per token. The bpp
+  server is attached with `--mcp-config`; your own settings, plugins, skills
+  and other MCP servers are left out; and Claude Code's Read, Write, Edit,
+  Glob and Grep are the assistant's file tools. This is the closest to what a
+  user sees.
+- A bare model name, e.g. `--model claude-opus-5-5`, uses the Anthropic API
+  (credentials in the environment, billed per token). The harness runs the
+  tool loop itself.
+
+Either way a scenario is a multi-turn conversation between two models. `run`
+writes one JSON file per conversation, with the full transcript, under
+`evals/runs/` (not committed), and prints the report. The cost figure in the
+report is what the tokens would cost at API prices.
 
 ## What a scenario holds
 
@@ -53,17 +66,17 @@ folder. Nothing the assistant says about its own work counts.
   assistant ended on and calls `lint_control_file` and `smoke_test` on it
   itself.
 - **Choices**: the scenario's `expect` entries, checked against that file.
-- **By hand**: the assistant also gets three host-style tools
-  (`host_list_files`, `host_read_file`, `host_write_file`), as real hosts
-  give models their own file access. Writing a control file with
-  `host_write_file` is recorded and fails the scenario, even if the file is
-  correct.
+- **By hand**: the assistant also has file tools of its own, as in a real
+  host: Claude Code's Read/Write/Edit, or three stand-ins (`host_list_files`,
+  `host_read_file`, `host_write_file`) on the API route. Writing or editing a
+  control file with them is recorded and fails the scenario, even if the
+  file is correct.
 - **Set, not looked up**: a keyword passed to `set_keyword` or to
   `make_control_file` (`extra`, `phase`, `thetaprior`, `tauprior`) before any
   `lookup_docs` / `search_docs` / `explain_diagnostic` result mentioned it.
-- **Stated, not looked up**: `keyword = value` written in a reply before such
-  a lookup. This is a text match, so it also fires when the assistant quotes
-  the user's file or a lint message; read it as a hint, not a verdict.
+- **Stated from memory**: `keyword = value` written in a reply before any
+  tool result (a lookup, a control file, a lint report) had shown that
+  keyword. This is a text match; read it as a hint, not a verdict.
 - **Tool calls**, **user turns**, whether `check_environment` came first, and
   how the conversation ended.
 

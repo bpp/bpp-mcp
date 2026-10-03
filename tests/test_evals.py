@@ -60,7 +60,9 @@ def test_docs_discipline():
           tool("make_control_file", {"extra": {"wprior": "2 10"}}),
           tool("search_docs", {"query": "unphased"}, result="... the phase keyword ..."),
           tool("set_keyword", {"keyword": "Phase", "value": "1 1"}),
-          {"role": "assistant", "text": "I set:\n  phase = 1 1\nas the manual says."}]
+          {"role": "assistant", "text": "I set:\n  phase = 1 1\nas the manual says."},
+          tool("make_control_file", {}, result='{"text": "nsample = 100000\\n"}'),
+          {"role": "assistant", "text": "The file has nsample = 100000."}]   # describing a result
     assert harness.docs_discipline(ok, kws) == ([], [])
     bad = [tool("set_keyword", {"keyword": "nsample", "value": "5"}),
            tool("lookup_docs", {"keyword": "nsample"}),               # too late
@@ -78,8 +80,12 @@ def test_hand_edits():
     events = [tool("host_write_file", {"path": "notes.md", "content": "hello"}),
               tool("host_write_file", {"path": "a.ctl", "content": "seed = 1"}),
               tool("host_write_file", {"path": "run.txt", "content": "seqfile = x.txt\n"}),
-              tool("host_write_file", {"path": "b.ctl", "content": ""}, is_error=True)]
-    assert harness.hand_edits(events) == ["a.ctl", "run.txt"]
+              tool("host_write_file", {"path": "b.ctl", "content": ""}, is_error=True),
+              tool("Write", {"file_path": "/tmp/p/c.ctl", "content": "seed = 1"}),
+              tool("Edit", {"file_path": "/tmp/p/d.ctl", "old_string": "a", "new_string": "b"}),
+              tool("Edit", {"file_path": "/tmp/p/notes.md", "old_string": "a", "new_string": "b"}),
+              tool("Read", {"file_path": "/tmp/p/c.ctl"})]
+    assert harness.hand_edits(events) == ["a.ctl", "run.txt", "c.ctl", "d.ctl"]
 
 
 def test_host_tools_are_confined(tmp_path):

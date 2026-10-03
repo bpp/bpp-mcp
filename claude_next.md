@@ -28,7 +28,7 @@ only while no release exists).
 | 2. Core path, Anastrepha end-to-end | done |
 | 3. Completeness | done |
 | 4. Docs and packaging | done; v0.1.0 released 2026-10-02 |
-| 5. Evaluation | harness and 13 scenarios done and tested offline; **the baseline run and `evals/RESULTS.md` are still to do** |
+| 5. Evaluation | done: harness, 13 scenarios, baseline in `evals/RESULTS.md` (13/13, one trial each) |
 
 **Tools implemented (17):** check_environment, set_project (only with
 `BPP_MCP_PROJECTS_DIR`), inspect_data, convert_data, make_loci_bed,
@@ -123,9 +123,16 @@ end-to-end, and the privacy check covers every registered tool.
   itself. The assistant is also given `host_*` file tools so that writing a
   control file by hand is possible and detectable; doing so fails the
   scenario. "Set a keyword before looking it up" is reported but does not
-  decide a pass. Providers plug in through `Model` / `Chat` in
-  `evals/harness.py`; only `AnthropicModel` exists. Transcripts go to
-  `evals/runs/` (git-ignored).
+  decide a pass. Transcripts go to `evals/runs/` (git-ignored).
+- **The baseline runs through Claude Code headless on the owner's
+  subscription** (`--model claude-code:opus --user-model claude-code:haiku`),
+  not the API: the owner did not want per-token billing. The harness strips
+  `ANTHROPIC_API_KEY` from the environment for those calls, since a set key
+  takes precedence over the claude.ai login. The API route (`AnthropicModel`,
+  a bare model name) is written but has never made a real call.
+- **`evals/RESULTS.md` is the `report` output plus a hand-written "Reading
+  this baseline" section.** Regenerating with `report > RESULTS.md` drops
+  that section; re-add or rewrite it.
 - **No comparison with the local bpp-agent model** (owner, 2026-10-03). The
   spec names that comparison as a purpose of the harness; it is dropped. The
   evaluation is only about whether a frontier model does the job with this
@@ -144,14 +151,15 @@ end-to-end, and the privacy check covers every registered tool.
    slash commands and the resources. A headless `claude -p` session against
    the built 0.1.0 package did drive check_environment, lint, set_keyword,
    smoke_test and run_command on the tiny fixture (2026-10-02).
-3. **Milestone 5 baseline** (needs the owner's go-ahead, it costs API
-   money): `pip install -e '.[evals]'`, then
-   `python evals/run_evals.py run --model claude-opus-5-5 -v` and
-   `python evals/run_evals.py report evals/runs/* > evals/RESULTS.md`.
-   `AnthropicModel` has not yet made a real API call; run one scenario first
-   (`--tasks tiny_bpp_format`). Read the transcripts of any failures before
-   concluding anything, then commit `RESULTS.md`.
-4. After the baseline: more trials per scenario.
+3. **Evaluation follow-ups**, none urgent: `--trials 3` for a number that
+   means something run to run; more scenarios (BAM/gVCF input, MSC-I
+   introgression, a Claude Desktop style `set_project` start); try the API
+   route once if it is ever wanted.
+4. **Things the baseline turned up** (see `evals/RESULTS.md`):
+   - there is no way to remove a keyword, so the assistant rebuilt a whole
+     file to get rid of a duplicate `jobname` left by `bpp-lint --fix`;
+   - with a host's own file tools the assistant does read sequence files
+     directly (5 of 13 conversations), outside this server's redaction.
 
 Possible small additions, not in the spec: a way to remove a keyword from a
 control file; a `subset_loci` + `smoke_test` shortcut for very large data;

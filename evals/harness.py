@@ -17,11 +17,14 @@ directory, never from what the assistant says about its own work.
 """
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import json
 import os
 import re
 import shutil
 import sys
+import tempfile
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -92,6 +95,8 @@ _FALLBACK = ("claude-fable-5-1", "claude-opus-5-5", "claude-sonnet-5-5")
 
 
 def cost_usd(model: str, usage: dict[str, int]) -> float | None:
+    if "reported_cost_microusd" in usage:       # Claude Code reports its own figure
+        return usage["reported_cost_microusd"] / 1e6
     p = PRICES.get(model)
     if not p:
         return None
@@ -205,6 +210,8 @@ def make_model(spec: str, effort: str | None = None) -> Model:
     provider, _, name = spec.rpartition(":")
     if provider in ("", "anthropic"):
         return AnthropicModel(name, effort=effort)
+    if provider == "claude-code":
+        return ClaudeCodeModel(name)
     raise SystemExit(f"unknown model provider '{provider}' in '{spec}'; add a Model class for it "
                      "in evals/harness.py and a branch in make_model()")
 
@@ -346,6 +353,21 @@ class Limits:
     max_tool_calls: int = 70
 
 
+@dataclass
+class Reply:
+    """What the assistant did with one user message."""
+    text: str
+    events: list[dict]                     # tool events, in order
+    usage: dict[str, int]
+    stop: str = "end"                      # end | refusal | truncated | max_tool_calls | error
+
+
+def _server_params(root: Path) -> StdioServerParameters:
+    env = {**os.environ, "BPP_MCP_ROOT": str(root)}
+    env.pop("BPP_MCP_PROJECTS_DIR", None)
+    return StdioServerParameters(command=sys.executable, args=["-m", "bpp_mcp.server"], env=env)
+
+
 def _result_text(res: Any) -> str:
     return "\n".join(c.text for c in res.content if getattr(c, "type", "") == "text")
 
@@ -363,81 +385,270 @@ def _add(total: dict[str, int], usage: dict[str, int]) -> None:
         total[k] = total.get(k, 0) + v
 
 
-async def run_scenario(sc: dict, assistant: Model, user: Model, root: Path,
+def _event(name: str, args: dict, result: str, is_error: bool, said: str = "") -> dict:
+    return {"role": "tool", "name": name, "args": args, "result": result, "is_error": is_error,
+            "said": said}
+
+
+class ApiAssistant:
+    """An assistant built here from a ``Model``: this harness runs the tool loop."""
+
+    def __init__(self, model: Model):
+        self.model, self.name = model, model.name
+
+    @contextlib.asynccontextmanager
+    async def open(self, root: Path, limits: Limits):
+        async with stdio_client(_server_params(root)) as (r, w):
+            async with ClientSession(r, w) as session:
+                init = await session.initialize()
+                listed = (await session.list_tools()).tools
+                server_tools = {t.name for t in listed}
+                tools = [{"name": t.name, "description": t.description or "",
+                          "input_schema": t.input_schema} for t in listed] + HOST_TOOLS
+                chat = self.model.start(ASSISTANT_FRAME + (init.instructions or ""), tools)
+                n_calls = 0
+
+                async def send(message: str) -> Reply:
+                    nonlocal n_calls
+                    events: list[dict] = []
+                    usage: dict[str, int] = {}
+                    turn = await chat.send_user(message)
+                    while True:
+                        _add(usage, turn.usage)
+                        if turn.stop in ("refusal", "truncated"):
+                            return Reply(turn.text, events, usage, turn.stop)
+                        if not turn.tool_calls:
+                            return Reply(turn.text, events, usage)
+                        results = []
+                        for call in turn.tool_calls:
+                            n_calls += 1
+                            if call.name in server_tools:
+                                text, err = await _call_server(session, call.name, call.args)
+                            else:
+                                res = host_tool(root, call.name, call.args)
+                                text, err = res.text, res.is_error
+                            results.append(ToolResult(call.id, text, err))
+                            events.append(_event(call.name, call.args, text, err,
+                                                 turn.text if call is turn.tool_calls[0] else ""))
+                        if n_calls >= limits.max_tool_calls:
+                            return Reply(turn.text, events, usage, "max_tool_calls")
+                        turn = await chat.send_tool_results(results)
+
+                yield send
+
+
+# ---- Claude Code (headless), on the user's Claude subscription rather than an API key
+
+
+def _claude_env() -> dict[str, str]:
+    """The environment for `claude -p`: without an API key, it uses the claude.ai login."""
+    env = dict(os.environ)
+    for k in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"):
+        env.pop(k, None)
+    return env
+
+
+async def _claude(args: list[str], cwd: Path, timeout: float) -> list[dict]:
+    """Run `claude -p ... --output-format stream-json`; return its events."""
+    exe = shutil.which("claude")
+    if not exe:
+        raise RuntimeError("the `claude` command (Claude Code) is not on PATH")
+    proc = await asyncio.create_subprocess_exec(
+        exe, "-p", *args, "--output-format", "stream-json", "--verbose",
+        cwd=cwd, env=_claude_env(), stdin=asyncio.subprocess.DEVNULL,
+        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+    try:
+        out, err = await asyncio.wait_for(proc.communicate(), timeout)
+    except asyncio.TimeoutError:
+        proc.kill()
+        await proc.wait()
+        raise RuntimeError(f"claude did not finish within {timeout:.0f}s") from None
+    events = []
+    for line in out.decode(errors="replace").splitlines():
+        try:
+            events.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue
+    if not any(e.get("type") == "result" for e in events):
+        raise RuntimeError(f"claude exited {proc.returncode} without a result: "
+                           f"{err.decode(errors='replace').strip()[-500:]}")
+    return events
+
+
+def _cc_usage(result: dict) -> dict[str, int]:
+    u = result.get("usage") or {}
+    usage = {k: int(u.get(k) or 0) for k in ("input_tokens", "output_tokens",
+                                             "cache_creation_input_tokens", "cache_read_input_tokens")}
+    # Claude Code's own estimate of what the turn would cost at API prices.
+    usage["reported_cost_microusd"] = int(float(result.get("total_cost_usd") or 0) * 1e6)
+    return usage
+
+
+def _cc_text(content: Any) -> str:
+    if isinstance(content, str):
+        return content
+    return "\n".join(b.get("text", "") for b in content or [] if isinstance(b, dict) and b.get("type") == "text")
+
+
+CC_FILE_TOOLS = ["Read", "Write", "Edit", "Glob", "Grep"]
+_ISOLATE = ["--strict-mcp-config", "--setting-sources", "project", "--disable-slash-commands",
+            "--permission-prompts", "none"]
+
+
+class ClaudeCodeAssistant:
+    """Claude Code in headless mode as the assistant: it runs the tool loop itself.
+
+    The bpp server is attached through --mcp-config and Claude Code's own
+    Read/Write/Edit/Glob/Grep stand in for the host file tools. The user's
+    settings, plugins, skills and other MCP servers are left out.
+    """
+
+    def __init__(self, model: str = "opus", effort: str | None = None, timeout: float = 1500):
+        self.model, self.effort, self.timeout = model, effort, timeout
+        self.name = f"claude-code:{model}"
+
+    @contextlib.asynccontextmanager
+    async def open(self, root: Path, limits: Limits):
+        config = root.parent / "mcp.json"
+        config.write_text(json.dumps({"mcpServers": {"bpp": {
+            "command": sys.executable, "args": ["-m", "bpp_mcp.server"],
+            "env": {"BPP_MCP_ROOT": str(root), "BPP_MCP_HOME": str(install.home())}}}}))
+        base = ["--model", self.model, "--mcp-config", str(config), *_ISOLATE,
+                "--tools", ",".join(CC_FILE_TOOLS),
+                "--allowedTools", " ".join(["mcp__bpp", *CC_FILE_TOOLS])]
+        if self.effort:
+            base += ["--effort", self.effort]
+        session_id: str | None = None
+        n_calls = 0
+
+        async def send(message: str) -> Reply:
+            nonlocal session_id, n_calls
+            args = [message, *base] + (["--resume", session_id] if session_id else [])
+            stream = await _claude(args, root, self.timeout)
+            events: list[dict] = []
+            pending: dict[str, dict] = {}
+            said = ""
+            for e in stream:
+                message = e.get("message")       # a string on some system events
+                content = message.get("content") if isinstance(message, dict) else None
+                if e.get("type") == "assistant" and isinstance(content, list):
+                    for b in content:
+                        if b.get("type") == "text":
+                            said = b.get("text", "")
+                        elif b.get("type") == "tool_use":
+                            name = b.get("name", "")
+                            ev = _event(name.removeprefix("mcp__bpp__"), dict(b.get("input") or {}),
+                                        "", False, said)
+                            said = ""
+                            pending[b.get("id", "")] = ev
+                            events.append(ev)
+                elif e.get("type") == "user" and isinstance(content, list):
+                    for b in content:
+                        ev = pending.get(b.get("tool_use_id", "")) if b.get("type") == "tool_result" else None
+                        if ev is not None:
+                            ev["result"] = _cc_text(b.get("content"))
+                            ev["is_error"] = bool(b.get("is_error"))
+            result = next(e for e in reversed(stream) if e.get("type") == "result")
+            session_id = result.get("session_id") or session_id
+            n_calls += len(events)
+            stop = ("error" if result.get("is_error") else
+                    "refusal" if result.get("stop_reason") == "refusal" else
+                    "max_tool_calls" if n_calls >= limits.max_tool_calls else "end")
+            return Reply(str(result.get("result") or ""), events, _cc_usage(result), stop)
+
+        yield send
+
+
+class ClaudeCodeModel:
+    """Claude Code in headless mode as a plain chat model with no tools (the simulated user)."""
+
+    def __init__(self, model: str = "haiku", timeout: float = 300):
+        self.model, self.timeout, self.name = model, timeout, f"claude-code:{model}"
+
+    def start(self, system: str, tools: list[dict]) -> Chat:
+        if tools:
+            raise ValueError("ClaudeCodeModel has no tool loop; use ClaudeCodeAssistant")
+        return _ClaudeCodeChat(self, system)
+
+
+class _ClaudeCodeChat:
+    def __init__(self, model: ClaudeCodeModel, system: str):
+        self.m, self.system, self.session_id = model, system, None
+        self.cwd = Path(tempfile.mkdtemp(prefix="bpp-eval-user-"))
+
+    async def send_user(self, text: str) -> Turn:
+        args = [text, "--model", self.m.model, "--system-prompt", self.system, "--tools", "",
+                *_ISOLATE]
+        if self.session_id:
+            args += ["--resume", self.session_id]
+        stream = await _claude(args, self.cwd, self.m.timeout)
+        result = next(e for e in reversed(stream) if e.get("type") == "result")
+        self.session_id = result.get("session_id") or self.session_id
+        return Turn(str(result.get("result") or ""), usage=_cc_usage(result))
+
+    async def send_tool_results(self, results: list[ToolResult]) -> Turn:
+        raise NotImplementedError
+
+
+def make_assistant(spec: str, effort: str | None = None):
+    provider, _, name = spec.rpartition(":")
+    if provider == "claude-code":
+        return ClaudeCodeAssistant(name, effort=effort)
+    return ApiAssistant(make_model(spec, effort=effort))
+
+
+async def run_scenario(sc: dict, assistant, user: Model, root: Path,
                        limits: Limits | None = None, log=None) -> dict:
-    """Run one scenario in ``root``. Returns {"transcript", "score", ...}."""
+    """Run one scenario in ``root``. ``assistant`` is a Model or has ``open(root, limits)``."""
     limits = limits or Limits()
     say = log or (lambda *_: None)
+    if not hasattr(assistant, "open"):
+        assistant = ApiAssistant(assistant)
     reason = prepare(sc, root)
     if reason:
         return {"id": sc["id"], "skipped": reason}
 
-    env = {**os.environ, "BPP_MCP_ROOT": str(root)}
-    env.pop("BPP_MCP_PROJECTS_DIR", None)
-    params = StdioServerParameters(command=sys.executable, args=["-m", "bpp_mcp.server"], env=env)
     events: list[dict] = []
     usage: dict[str, dict[str, int]] = {"assistant": {}, "user": {}}
     t0 = time.monotonic()
     ended = "user_done"
+    n_user = 0
+    decisions = "\n".join(f"- {d}" for d in sc["decisions"])
+    user_chat = user.start(USER_SYSTEM.format(request=sc["request"].strip(),
+                                              decisions=decisions, done=DONE), [])
+    message = sc["request"].strip()
+    async with assistant.open(root, limits) as send:
+        while True:
+            n_user += 1
+            events.append({"role": "user", "text": message})
+            say(f"  user: {message[:100]}")
+            reply = await send(message)
+            _add(usage["assistant"], reply.usage)
+            events.extend(reply.events)
+            for e in reply.events:
+                say(f"    {e['name']}{' (error)' if e['is_error'] else ''}")
+            if reply.text:
+                events.append({"role": "assistant", "text": reply.text})
+            if reply.stop != "end":
+                ended = reply.stop
+                break
+            if n_user >= limits.max_user_turns:
+                ended = "max_user_turns"
+                break
+            answer = await user_chat.send_user(reply.text or "(the assistant said nothing)")
+            _add(usage["user"], answer.usage)
+            if DONE in answer.text or not answer.text.strip():
+                break
+            message = answer.text.strip()
 
-    async with stdio_client(params) as (r, w):
+    # Graded through a session of its own, whichever way the assistant ran.
+    async with stdio_client(_server_params(root)) as (r, w):
         async with ClientSession(r, w) as session:
-            init = await session.initialize()
-            listed = (await session.list_tools()).tools
-            server_tools = {t.name for t in listed}
-            tools = [{"name": t.name, "description": t.description or "",
-                      "input_schema": t.input_schema} for t in listed] + HOST_TOOLS
-            chat = assistant.start(ASSISTANT_FRAME + (init.instructions or ""), tools)
-            decisions = "\n".join(f"- {d}" for d in sc["decisions"])
-            user_chat = user.start(USER_SYSTEM.format(request=sc["request"].strip(),
-                                                      decisions=decisions, done=DONE), [])
-            message = sc["request"].strip()
-            n_calls = n_user = 0
-            while True:
-                n_user += 1
-                events.append({"role": "user", "text": message})
-                say(f"  user: {message[:100]}")
-                turn = await chat.send_user(message)
-                while True:
-                    _add(usage["assistant"], turn.usage)
-                    if turn.stop in ("refusal", "truncated"):
-                        ended = turn.stop
-                        break
-                    if not turn.tool_calls:
-                        break
-                    results = []
-                    for call in turn.tool_calls:
-                        n_calls += 1
-                        if call.name in server_tools:
-                            text, err = await _call_server(session, call.name, call.args)
-                        else:
-                            res = host_tool(root, call.name, call.args)
-                            text, err = res.text, res.is_error
-                        results.append(ToolResult(call.id, text, err))
-                        events.append({"role": "tool", "name": call.name, "args": call.args,
-                                       "result": text, "is_error": err,
-                                       "said": turn.text if call is turn.tool_calls[0] else ""})
-                        say(f"    {call.name}{' (error)' if err else ''}")
-                    if n_calls >= limits.max_tool_calls:
-                        ended = "max_tool_calls"
-                        break
-                    turn = await chat.send_tool_results(results)
-                if turn.text:
-                    events.append({"role": "assistant", "text": turn.text})
-                if ended != "user_done":
-                    break
-                if n_user >= limits.max_user_turns:
-                    ended = "max_user_turns"
-                    break
-                reply = await user_chat.send_user(turn.text or "(the assistant said nothing)")
-                _add(usage["user"], reply.usage)
-                if DONE in reply.text or not reply.text.strip():
-                    break
-                message = reply.text.strip()
-
+            await session.initialize()
             score = await grade(sc, events, root, session)
 
-    score.update(ended=ended, user_turns=n_user, tool_calls=n_calls,
+    score.update(ended=ended, user_turns=n_user,
+                 tool_calls=sum(1 for e in events if e["role"] == "tool"),
                  seconds=round(time.monotonic() - t0, 1))
     costs = {who: cost_usd(m.name, usage[who]) for who, m in (("assistant", assistant), ("user", user))}
     return {"id": sc["id"], "assistant_model": assistant.name, "user_model": user.name,
@@ -517,52 +728,61 @@ def docs_discipline(events: list[dict], keywords: list[str]) -> tuple[list[str],
     appeared in a search_docs query or result, or in an explain_diagnostic
     result, earlier in the conversation. "Set" means passed to set_keyword or
     to make_control_file (`extra`, phase, thetaprior, tauprior): a hard
-    signal. "Stated" is a text match in what the assistant wrote, so it also
-    catches harmless quoting of a file or a lint message: a soft signal.
+    signal. "Stated" is `keyword = value` in the assistant's own words before
+    ANY tool result had shown that keyword (a lookup, or a control file or
+    lint report it is describing): syntax from memory. It is a text match, so
+    read it as a hint.
     """
     known = {k.lower(): k for k in keywords}
-    seen: set[str] = set()
+    seen: set[str] = set()            # looked up in the manual
+    shown: set[str] = set()           # appeared in any tool result
     set_: list[str] = []
     said: list[str] = []
 
-    def note(text: str) -> None:
+    def note(text: str, into: set[str]) -> None:
         low = text.lower()
-        seen.update(k for k in known if k in low)
+        into.update(k for k in known if k in low)
 
-    def check(kw: str, flagged: list[str]) -> None:
+    def check(kw: str, flagged: list[str], have: set[str]) -> None:
         k = kw.strip().lower()
-        if k in known and k not in seen and known[k] not in flagged:
+        if k in known and k not in have and known[k] not in flagged:
             flagged.append(known[k])
 
     stated = re.compile(_KEY_STATED.format(kw="|".join(re.escape(k) for k in known)), re.I | re.M)
     for e in events:
         if e["role"] == "assistant" or (e["role"] == "tool" and e.get("said")):
             for m in stated.finditer(e.get("text") or e.get("said") or ""):
-                check(m.group(1), said)
+                check(m.group(1), said, shown)
         if e["role"] != "tool":
             continue
         name, args = e["name"], e["args"]
         if name == "lookup_docs":
-            note(str(args.get("keyword", "")))
+            note(str(args.get("keyword", "")), seen)
         elif name in ("search_docs", "explain_diagnostic"):
-            note(str(args.get("query", "")) + " " + e["result"])
+            note(str(args.get("query", "")) + " " + e["result"], seen)
         elif name == "set_keyword":
-            check(str(args.get("keyword", "")), set_)
+            check(str(args.get("keyword", "")), set_, seen)
         elif name == "make_control_file":
             for k in [*(args.get("extra") or {}), *(t for t in _TYPED_SYNTAX if args.get(t))]:
-                check(str(k), set_)
+                check(str(k), set_, seen)
+        note(str(args.get("keyword", "")) + " " + e["result"], shown)
     return set_, said
 
 
+_WRITERS = {"host_write_file": ("path", "content"), "Write": ("file_path", "content"),
+            "Edit": ("file_path", "new_string")}
+
+
 def hand_edits(events: list[dict]) -> list[str]:
-    """Control files the assistant wrote with its own file access."""
+    """Control files the assistant wrote or edited with its own file access."""
     out = []
     for e in events:
-        if e["role"] == "tool" and e["name"] == "host_write_file" and not e["is_error"]:
-            path, content = str(e["args"].get("path", "")), str(e["args"].get("content", ""))
+        if e["role"] == "tool" and e["name"] in _WRITERS and not e["is_error"]:
+            path_key, text_key = _WRITERS[e["name"]]
+            path, content = str(e["args"].get(path_key, "")), str(e["args"].get(text_key, ""))
             if path.endswith(".ctl") or re.search(r"^[ \t]*(seqfile|species&tree)[ \t]*=", content,
                                                   re.I | re.M):
-                out.append(path)
+                out.append(Path(path).name if Path(path).is_absolute() else path)
     return out
 
 

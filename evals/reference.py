@@ -39,8 +39,6 @@ SOLUTIONS: dict[str, list] = {
     "anas_parameters": _anas("A00"),
     "anas_species_tree": _anas("A01"),
     "anas_joint": _anas("A11"),
-    "anas_unphased": _anas(before_make=[[("lookup_docs", {"keyword": "phase"})]],
-                           phase="1 1 1 1 1"),
     "anas_migration": _anas(
         tree=[("build_species_tree", {
             "joins": ANAS_JOINS, "imap": "data/anas.imap", "out_prefix": "data/sp",
@@ -80,6 +78,16 @@ SOLUTIONS: dict[str, list] = {
         [("set_keyword", {"ctl": "old.ctl", "keyword": "thetaprior", "value": "invgamma 3 0.004"})],
         [("set_keyword", {"ctl": "old.ctl", "keyword": "tauprior", "value": "invgamma 3 0.004"})],
         *_finish("old.ctl"),
+    ],
+    "frogs_unphased": [
+        [("check_environment", {})],
+        [("build_species_tree", {"joins": "K+C, K_C+L, K_C_L+H", "imap": "frogs.Imap.txt",
+                                 "out_prefix": "sp"})],
+        [("lookup_docs", {"keyword": "phase"})],
+        [("make_control_file", {"analysis": "A00", "seqfile": "frogs.txt",
+                                "imapfile": "frogs.Imap.txt", "stree_file": "sp.stree",
+                                "out": "run.ctl", "nloci": 5, "phase": "1 1 1 1"})],
+        *_finish("run.ctl"),
     ],
     "off_topic": ["I can only help with setting up BPP analyses, so I can't write that script."],
 }
