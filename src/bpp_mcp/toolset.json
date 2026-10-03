@@ -2,12 +2,12 @@
   "_comment": "Pinned BPP tool releases that this bpp-mcp version is tested with. `version` is also the minimum check_environment accepts. sha256 values are verified on download; they match each release's SHA256SUMS where one is published.",
   "bpp-seqs": {
     "repo": "bpp/bpp-seqs",
-    "tag": "v0.2.0",
-    "version": "0.2.0",
+    "tag": "v0.3.0",
+    "version": "0.3.0",
     "assets": {
-      "linux-x86_64": {"name": "bpp-seqs-0.2.0-linux-x86_64.tar.gz", "sha256": "4eb85cc0e8bc2213fda6545bc7cbe51490b71924fb653282e8ffe500f79744be"},
-      "macos-arm64": {"name": "bpp-seqs-0.2.0-macos-arm64.tar.gz", "sha256": "2de933663ae3cf69b513cba9b0a4562e16b6efbfb963477773b4eefd2949cecb"},
-      "macos-x86_64": {"name": "bpp-seqs-0.2.0-macos-x86_64.tar.gz", "sha256": "3a6bf87681dc8b0ae64091bb3a57ff357c4b3082b3d37a7e963d9b3781710306"}
+      "linux-x86_64": {"name": "bpp-seqs-0.3.0-linux-x86_64.tar.gz", "sha256": "02311163c5cb8d5d9dc303dc1c73250a100b88d37398ff0f8906a519fdcb82c2"},
+      "macos-arm64": {"name": "bpp-seqs-0.3.0-macos-arm64.tar.gz", "sha256": "c4e6b9b9782267f29ed8f83dc318263eb6af39c66bdd4cf257a7949909c06f12"},
+      "macos-x86_64": {"name": "bpp-seqs-0.3.0-macos-x86_64.tar.gz", "sha256": "fdc8068fde3bcecdb0f385371eb396f13b6fdc29cd4ee3abc3e248c04df2a2ff"}
     }
   },
   "bpp-tree": {
