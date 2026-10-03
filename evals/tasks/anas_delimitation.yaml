@@ -1,0 +1,23 @@
+# Species delimitation on a guide tree (A10).
+request: >
+  I have aligned FASTA loci for five fruit-fly species and want to know how many species there really are. Can you help me set up BPP?
+fixtures: [anastrepha]
+decisions:
+  - My data are aligned FASTA files, one locus per file, in the folder loci/. There are 10 loci.
+  - imap.txt in the project folder says which sample belongs to which species.
+  - The five species are turpiniae, suspensa, distincta, fraterculus and obliqua.
+  - 'I trust the tree but not the species limits: I want to test whether the named species are distinct, keeping the tree fixed as a guide tree.'
+  - 'The relationships I believe in: fraterculus and obliqua are sisters; distincta is sister to that pair; suspensa is sister to those three; turpiniae is the outgroup.'
+  - Each sequence is a single phased haplotype, so nothing needs phasing.
+  - I do not want to model gene flow.
+  - I have no opinion on chain length; whatever the assistant recommends as a sensible start is fine.
+  - 'File and job names: anything sensible is fine. Use all the default data filters.'
+  - "For the delimitation algorithm and its settings I will take the assistant's recommendation from the manual."
+expect:
+  analysis: A10
+  species: [turpiniae, suspensa, distincta, fraterculus, obliqua]
+  newick: "(turpiniae,(suspensa,(distincta,(fraterculus,obliqua))));"
+  keywords:
+    nloci: 10
+    speciesdelimitation: {regex: '1 .+'}
+    speciestree: {regex: '0.*'}

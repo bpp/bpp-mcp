@@ -1,0 +1,25 @@
+# A BPP 3.x control file brought up to date.
+request: >
+  I've inherited an old BPP control file, old.ctl, from a former lab member. It was written for BPP 3 and the current BPP won't run it. Can you update it so it runs?
+examples:
+  - {tool: bpp, path: frogs/frogs.txt}
+  - {tool: bpp, path: frogs/frogs.Imap.txt}
+files:
+  old.ctl: "          seed = -1\n       seqfile = frogs.txt\n      Imapfile = frogs.Imap.txt\n       outfile = out.txt\n      mcmcfile = mcmc.txt\n  speciesdelimitation = 0\n  speciestree = 0\n  species&tree = 4  K  C  L  H\n                    9  7 14  2\n                    (((K, C), L), H);\n       diploid = 1 1 1 1\n       usedata = 1\n         nloci = 5\n     cleandata = 0\n    thetaprior = 2 1000\n      tauprior = 2 2000 1\n      finetune = 1\n         print = 1\n        burnin = 2000\n      sampfreq = 2\n       nsample = 20000\n"
+decisions:
+  - The file is old.ctl; its data files frogs.txt and frogs.Imap.txt are in the same folder.
+  - 'Keep the same analysis: the four species K, C, L and H on the fixed tree (((K,C),L),H), estimating parameters from all 5 loci.'
+  - All four species are unphased diploid data, as in the old file.
+  - The old priors are no longer accepted. Use an inverse-gamma prior with shape 3 and scale 0.004 for theta, and the same, shape 3 and scale 0.004, for tau.
+  - Keep the chain settings from the old file. Output file names do not matter.
+  - Yes, the assistant may apply the automatic fixes and change the file; keeping a backup is fine.
+expect:
+  analysis: A00
+  species: [K, C, L, H]
+  newick: "(((K,C),L),H);"
+  keywords:
+    nloci: 5
+    phase: {regex: '1( +1){3}'}
+    thetaprior: {regex: '(invgamma +)?3 +0\.004'}
+    tauprior: {regex: '(invgamma +)?3 +0\.004'}
+    nsample: 20000

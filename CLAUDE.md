@@ -29,6 +29,9 @@ the tool instead.
 - `src/bpp_mcp/resources.py`, `prompts.py`: the `bpp://manual/{keyword}`,
   `bpp://examples` and `bpp://examples/{name}` resources, and the three
   prompts. Prompts only order tool calls; they state no BPP facts.
+- `evals/`: the evaluation harness (`harness.py`, `run_evals.py`), scenarios
+  (`tasks/*.yaml`) and a reference solution for each (`reference.py`). See
+  `evals/README.md`. Running it against a model costs API money; ask first.
 - `src/bpp_mcp/tools/*.py`: tool functions. Docstrings are written for the
   model: what it does, when to call it, what to do next, key output fields.
 - `src/bpp_mcp/workarounds.py`: every patch for an upstream bug, with the bug,

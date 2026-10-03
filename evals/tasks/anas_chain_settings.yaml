@@ -1,0 +1,24 @@
+# The user dictates the chain settings.
+request: >
+  Please set up a BPP parameter-estimation run on a fixed tree for my five Anastrepha species. My advisor told me exactly which MCMC settings to use.
+fixtures: [anastrepha]
+decisions:
+  - My data are aligned FASTA files, one locus per file, in the folder loci/. There are 10 loci.
+  - imap.txt in the project folder says which sample belongs to which species.
+  - The five species are turpiniae, suspensa, distincta, fraterculus and obliqua.
+  - The species and the tree are fixed; I want parameter estimates.
+  - 'The relationships I believe in: fraterculus and obliqua are sisters; distincta is sister to that pair; suspensa is sister to those three; turpiniae is the outgroup.'
+  - Each sequence is a single phased haplotype, so nothing needs phasing.
+  - I do not want to model gene flow.
+  - "My advisor's MCMC settings: burn-in of 20000, sample every 5 iterations, keep 50000 samples, and random seed 12345."
+  - 'File and job names: anything sensible is fine. Use all the default data filters.'
+expect:
+  analysis: A00
+  species: [turpiniae, suspensa, distincta, fraterculus, obliqua]
+  newick: "(turpiniae,(suspensa,(distincta,(fraterculus,obliqua))));"
+  keywords:
+    nloci: 10
+    burnin: 20000
+    sampfreq: 5
+    nsample: 50000
+    seed: 12345

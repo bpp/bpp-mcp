@@ -1,0 +1,22 @@
+# An existing control file that BPP rejects.
+request: >
+  BPP crashes as soon as I start it with my control file run.ctl. Can you find out what is wrong and fix it?
+fixtures: [tiny]
+remove: [ok.ctl]
+files:
+  run.ctl: "seed = 1\nseqfile = tiny.txt\nImapfile = tiny.imap\njobname = out\nspeciesdelimitation = 0\nspeciestree = 0\nspecies&tree = 3  A  B  C\n                  2  2  2\n                  ((A,B),C);\nusedata = 1\nnloci = 3\nphase = 1 1\ncleandata = 0\nthetaprior = invgamma 3 0.01\ntauprior = invgamma 3 0.02\nfinetune = 1\nburnin = 10\nsampfreq = 1\nnsample = 20\n"
+decisions:
+  - The control file is run.ctl; the data files tiny.txt and tiny.imap are next to it and are correct.
+  - The data have 2 loci and I want to use both.
+  - Three species, A, B and C, with the tree ((A,B),C), fixed. That part of the file is right.
+  - "The sequences are phased haplotypes; nothing should be treated as unphased. I don't know why the file has a phase line."
+  - Keep everything else in the file as it is. Yes, the assistant may change the file.
+expect:
+  analysis: A00
+  species: [A, B, C]
+  newick: "((A,B),C);"
+  keywords:
+    nloci: 2
+    phase: {absent_or: {regex: '0( +0)*'}}
+    thetaprior: invgamma 3 0.01
+    nsample: 20

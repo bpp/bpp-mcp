@@ -28,7 +28,7 @@ only while no release exists).
 | 2. Core path, Anastrepha end-to-end | done |
 | 3. Completeness | done |
 | 4. Docs and packaging | done; v0.1.0 released 2026-10-02 |
-| 5. Evaluation | **next**, not started |
+| 5. Evaluation | harness and 13 scenarios done and tested offline; **the baseline run and `evals/RESULTS.md` are still to do** |
 
 **Tools implemented (17):** check_environment, set_project (only with
 `BPP_MCP_PROJECTS_DIR`), inspect_data, convert_data, make_loci_bed,
@@ -116,6 +116,19 @@ end-to-end, and the privacy check covers every registered tool.
   does start it in the launch directory (tested) and also sets
   `CLAUDE_PROJECT_DIR`, which `sandbox.from_env` could use as a fallback but
   does not yet. Codex and Gemini are untested by hand.
+- **Evaluation design** (`evals/README.md` has the detail): two models per
+  scenario, the assistant under test and a simulated user that answers from
+  the scenario's `decisions`. Scores come only from the tool trace and the
+  final files; the harness lints and smoke-tests the final control file
+  itself. The assistant is also given `host_*` file tools so that writing a
+  control file by hand is possible and detectable; doing so fails the
+  scenario. "Set a keyword before looking it up" is reported but does not
+  decide a pass. Providers plug in through `Model` / `Chat` in
+  `evals/harness.py`; only `AnthropicModel` exists. Transcripts go to
+  `evals/runs/` (git-ignored).
+- **Every scenario has a reference solution** in `evals/reference.py`, replayed
+  with no model by `tests/test_evals.py` (needs pyyaml, which is in the
+  `test` extra). A new scenario without one fails the tests.
 - **License:** AGPL-3.0-or-later, matching the other bpp tools.
 
 ## Next
@@ -127,8 +140,15 @@ end-to-end, and the privacy check covers every registered tool.
    slash commands and the resources. A headless `claude -p` session against
    the built 0.1.0 package did drive check_environment, lint, set_keyword,
    smoke_test and run_command on the tiny fixture (2026-10-02).
-3. **Milestone 5:** the evaluation harness (`evals/tasks/*.yaml`,
-   `evals/run_evals.py`, `evals/RESULTS.md`); see `BPP-MCP-BUILD.md`.
+3. **Milestone 5 baseline** (needs the owner's go-ahead, it costs API
+   money): `pip install -e '.[evals]'`, then
+   `python evals/run_evals.py run --model claude-opus-5-5 -v` and
+   `python evals/run_evals.py report evals/runs/* > evals/RESULTS.md`.
+   `AnthropicModel` has not yet made a real API call; run one scenario first
+   (`--tasks tiny_bpp_format`). Read the transcripts of any failures before
+   concluding anything, then commit `RESULTS.md`.
+4. After the baseline: more trials per scenario, a second model for
+   comparison, and a `Model` class for the local bpp-agent model.
 
 Possible small additions, not in the spec: a way to remove a keyword from a
 control file; a `subset_loci` + `smoke_test` shortcut for very large data;

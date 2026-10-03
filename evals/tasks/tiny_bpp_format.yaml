@@ -1,0 +1,18 @@
+# Data already in BPP format; no conversion needed.
+request: >
+  My data are already in BPP format: tiny.txt is the sequence file and tiny.imap the Imap. I need a control file to estimate parameters on a fixed tree of my three species.
+fixtures: [tiny]
+remove: [ok.ctl]
+decisions:
+  - tiny.txt is already a BPP sequence file with 2 loci, and tiny.imap is its Imap. Use them as they are; do not convert or filter them.
+  - 'Three species: A, B and C. A and B are sisters and C is the outgroup. The species and tree are fixed.'
+  - Each sequence is a single phased haplotype, so nothing needs phasing.
+  - I do not want to model gene flow.
+  - I have no opinion on chain length; whatever the assistant recommends as a sensible start is fine.
+  - 'File and job names: anything sensible is fine.'
+expect:
+  analysis: A00
+  species: [A, B, C]
+  newick: "((A,B),C);"
+  keywords:
+    nloci: 2

@@ -1,0 +1,23 @@
+# Gene flow between two sister species (MSC-M).
+request: >
+  I think two of my fruit-fly species exchange genes. Can you set up a BPP analysis that estimates divergence times and population sizes and allows for migration?
+fixtures: [anastrepha]
+decisions:
+  - My data are aligned FASTA files, one locus per file, in the folder loci/. There are 10 loci.
+  - imap.txt in the project folder says which sample belongs to which species.
+  - The five species are turpiniae, suspensa, distincta, fraterculus and obliqua.
+  - The species and the tree are fixed; I want parameter estimates.
+  - 'The relationships I believe in: fraterculus and obliqua are sisters; distincta is sister to that pair; suspensa is sister to those three; turpiniae is the outgroup.'
+  - I want continuous migration (the MSC-M model) between fraterculus and obliqua, in both directions, and nowhere else.
+  - For the prior on the migration rates use a gamma distribution with shape 2 and rate 10.
+  - Each sequence is a single phased haplotype, so nothing needs phasing.
+  - I have no opinion on chain length; whatever the assistant recommends as a sensible start is fine.
+  - 'File and job names: anything sensible is fine. Use all the default data filters.'
+expect:
+  analysis: A00
+  species: [turpiniae, suspensa, distincta, fraterculus, obliqua]
+  newick: "(turpiniae,(suspensa,(distincta,(fraterculus,obliqua))));"
+  keywords:
+    nloci: 10
+    migration: present
+    wprior: {regex: '2 +10'}

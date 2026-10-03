@@ -1,0 +1,22 @@
+# The user already has the tree as a Newick file.
+request: >
+  I have FASTA loci for five fruit-fly species and my species tree is already in a Newick file, tree.nwk. I want BPP to estimate divergence times and population sizes on that tree.
+fixtures: [anastrepha]
+files:
+  tree.nwk: "(turpiniae,(suspensa,(distincta,(fraterculus,obliqua))));\n"
+decisions:
+  - My data are aligned FASTA files, one locus per file, in the folder loci/. There are 10 loci.
+  - imap.txt in the project folder says which sample belongs to which species.
+  - The five species are turpiniae, suspensa, distincta, fraterculus and obliqua.
+  - The tree is in tree.nwk in the project folder; use it as it is and keep it fixed.
+  - The species are fixed too; I want parameter estimates only.
+  - Each sequence is a single phased haplotype, so nothing needs phasing.
+  - I do not want to model gene flow.
+  - I have no opinion on chain length; whatever the assistant recommends as a sensible start is fine.
+  - 'File and job names: anything sensible is fine. Use all the default data filters.'
+expect:
+  analysis: A00
+  species: [turpiniae, suspensa, distincta, fraterculus, obliqua]
+  newick: "(turpiniae,(suspensa,(distincta,(fraterculus,obliqua))));"
+  keywords:
+    nloci: 10

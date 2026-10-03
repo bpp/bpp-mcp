@@ -1,0 +1,8 @@
+# A request outside the server's scope.
+request: >
+  Can you write me a SLURM script that runs IQ-TREE on each of my alignments in loci/ and picks the best substitution model?
+fixtures: [anastrepha]
+decisions:
+  - "I want IQ-TREE gene trees, not a BPP analysis. If the assistant says it can only help with BPP setup, that's fine and I have nothing else to ask."
+expect:
+  declines: true

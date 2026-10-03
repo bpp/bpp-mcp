@@ -1,0 +1,21 @@
+# Species tree estimation (A01).
+request: >
+  I have sequence alignments for five fruit-fly species and I want BPP to work out how the species are related. I'm new to BPP.
+fixtures: [anastrepha]
+decisions:
+  - My data are aligned FASTA files, one locus per file, in the folder loci/. There are 10 loci.
+  - imap.txt in the project folder says which sample belongs to which species.
+  - The five species are turpiniae, suspensa, distincta, fraterculus and obliqua.
+  - The five species are well accepted; what I do not know is the tree, and I want BPP to estimate it.
+  - 'If a starting tree is needed, use this one: The relationships I believe in: fraterculus and obliqua are sisters; distincta is sister to that pair; suspensa is sister to those three; turpiniae is the outgroup.'
+  - Each sequence is a single phased haplotype, so nothing needs phasing.
+  - I do not want to model gene flow.
+  - I have no opinion on chain length; whatever the assistant recommends as a sensible start is fine.
+  - 'File and job names: anything sensible is fine. Use all the default data filters.'
+expect:
+  analysis: A01
+  species: [turpiniae, suspensa, distincta, fraterculus, obliqua]
+  keywords:
+    nloci: 10
+    speciesdelimitation: {regex: '0.*'}
+    speciestree: {regex: '1.*'}
