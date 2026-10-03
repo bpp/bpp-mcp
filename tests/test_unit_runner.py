@@ -140,6 +140,7 @@ def test_install_hints(monkeypatch):
     from bpp_mcp import install
     monkeypatch.setattr(install, "platform_key", lambda *a: "linux-x86_64")
     assert "bpp-mcp install-tools" in runner.install_hint("bpp-lint")
-    assert runner.install_hint("bpp-docs") == "build it from source: https://github.com/bpp/bpp-docs"
-    monkeypatch.setattr(install, "platform_key", lambda *a: "macos-arm64")
-    assert "github.com/bpp/bpp-seqs" in runner.install_hint("bpp-seqs")
+    # Linux aarch64: only bpp has a release, so the others point to their source.
+    monkeypatch.setattr(install, "platform_key", lambda *a: "linux-aarch64")
+    assert "bpp-mcp install-tools" in runner.install_hint("bpp")
+    assert runner.install_hint("bpp-lint") == "build it from source: https://github.com/bpp/bpp-lint"
