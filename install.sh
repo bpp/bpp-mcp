@@ -12,13 +12,14 @@
 # Shell startup files are not modified.
 #
 # Environment:
-#   BPP_MCP_SPEC   what to install (default: the main branch on GitHub;
-#                  a local checkout path also works)
+#   BPP_MCP_SPEC   what to install (default: the latest release on GitHub;
+#                  a URL, a version tag's archive or a local checkout also work)
 #   BPP_MCP_HOME   where the BPP tools go (default: ~/.local/share/bpp-mcp)
 
 set -eu
 
-SPEC=${BPP_MCP_SPEC:-https://github.com/bpp/bpp-mcp/archive/refs/heads/main.tar.gz}
+RELEASE=https://github.com/bpp/bpp-mcp/releases/latest/download/bpp-mcp.tar.gz
+MAIN=https://github.com/bpp/bpp-mcp/archive/refs/heads/main.tar.gz
 UV_INSTALLER=https://astral.sh/uv/install.sh
 
 die() {
@@ -62,9 +63,23 @@ main() {
         [ -x "$UV" ] || die "uv installed but not found at $UV"
     fi
 
-    echo "Installing bpp-mcp from $SPEC ..."
+    pkgdir=
+    if [ -n "${BPP_MCP_SPEC:-}" ]; then
+        SPEC=$BPP_MCP_SPEC
+        echo "Installing bpp-mcp from $SPEC ..."
+    else
+        pkgdir=$(mktemp -d)
+        SPEC=$pkgdir/bpp-mcp.tar.gz
+        if fetch "$RELEASE" "$SPEC" 2>/dev/null; then
+            echo "Installing the latest bpp-mcp release ..."
+        else
+            SPEC=$MAIN
+            echo "No bpp-mcp release could be downloaded; installing the development version ..."
+        fi
+    fi
     "$UV" tool install --quiet --force --python '>=3.10' "$SPEC" \
         || die "uv could not install bpp-mcp"
+    [ -z "$pkgdir" ] || rm -rf "$pkgdir"
 
     BPP_MCP="$("$UV" tool dir --bin)/bpp-mcp"
     [ -x "$BPP_MCP" ] || die "bpp-mcp installed but not found at $BPP_MCP"

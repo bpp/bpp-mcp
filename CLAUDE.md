@@ -64,3 +64,9 @@ with a reason when one is missing. Fixtures: `tests/fixtures/anastrepha`
 overridden with `BPP_MCP_<NAME>` (e.g. `BPP_MCP_BPP_LINT=/path/to/bpp-lint`).
 
 Commit at each milestone, only when its tests pass.
+
+## Releases
+
+Set `__version__` in `src/bpp_mcp/__init__.py`, tag `vX.Y.Z` to match and
+push the tag; `.github/workflows/release.yml` builds, tests the wheel and
+publishes a GitHub release. `install.sh` installs the latest release.

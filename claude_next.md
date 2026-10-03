@@ -15,7 +15,9 @@ python3 -m venv .venv && .venv/bin/pip install -e '.[test]'
 
 To use it as a server: `claude mcp add --scope user bpp -- <path>/bpp-mcp`,
 then `/mcp` in a session to confirm it is connected. End users install with
-`curl -fsSL https://raw.githubusercontent.com/bpp/bpp-mcp/main/install.sh | sh`.
+`curl -fsSL https://raw.githubusercontent.com/bpp/bpp-mcp/main/install.sh | sh`,
+which installs the latest GitHub release (the development version from `main`
+only while no release exists).
 
 ## Status
 
@@ -25,8 +27,8 @@ then `/mcp` in a session to confirm it is connected. End users install with
 | Install path (not in the original spec) | done |
 | 2. Core path, Anastrepha end-to-end | done |
 | 3. Completeness | done |
-| 4. Docs and packaging | **next**; partly done (install docs, CI install job) |
-| 5. Evaluation | not started |
+| 4. Docs and packaging | done in the repo; **the first release (tag v0.1.0) is still to be pushed** |
+| 5. Evaluation | **next**, not started |
 
 **Tools implemented (17):** check_environment, set_project (only with
 `BPP_MCP_PROJECTS_DIR`), inspect_data, convert_data, make_loci_bed,
@@ -99,24 +101,40 @@ end-to-end, and the privacy check covers every registered tool.
   `$BPP_MCP_HOME/tools/*/examples`; the name is the path below `examples/`
   joined with `-` (e.g. `frogs-A00.bpp.ctl`). Example data files are not
   served.
+- **Releases are GitHub releases, not PyPI.** Pushing a tag `vX.Y.Z` that
+  matches `__version__` runs `.github/workflows/release.yml`: build, run the
+  tests against the built wheel, publish the wheel, the sdist, the same sdist
+  as `bpp-mcp.tar.gz` (a fixed name, so
+  `releases/latest/download/bpp-mcp.tar.gz` always works), `install.sh` and
+  `SHA256SUMS`. "Run workflow" does all but publish. `install.sh` downloads
+  that fixed-name file and falls back to `main` if there is no release.
+  PyPI (so that `pipx install bpp-mcp` works) is left for the owner to
+  decide; it needs a PyPI project and trusted publishing set up.
+- **Host docs in the README** were checked on 2026-10-02 against
+  code.claude.com/docs/en/mcp, modelcontextprotocol.io (Claude Desktop),
+  developers.openai.com/codex/mcp and gemini-cli's docs/tools/mcp-server.md.
+  None of the hosts documents the server's starting directory. Claude Code
+  does start it in the launch directory (tested) and also sets
+  `CLAUDE_PROJECT_DIR`, which `sandbox.from_env` could use as a fallback but
+  does not yet. Codex and Gemini are untested by hand.
 - **License:** AGPL-3.0-or-later, matching the other bpp tools.
 
-## Next: Milestone 4
+## Next
 
-From `BPP-MCP-BUILD.md`:
-
-1. **README:** the tool list, resources and prompts; host registration for
-   Claude Desktop, Codex and Gemini CLI, checked against their current docs;
-   the privacy note; what the server does not do.
-2. **Releases:** PyPI or tagged releases, so `install.sh` stops tracking
-   `main`.
-3. **By hand in Claude Code:** the Milestone 3 tools, the prompts (as slash
-   commands) and the resources.
-
-Then Milestone 5 (evaluation harness).
+1. **Cut the first release** (owner): push `main`, check CI, optionally run
+   the release workflow by hand as a dry run, then
+   `git tag v0.1.0 && git push origin v0.1.0`. Afterwards run the `curl ... |
+   sh` line from the README on a clean account.
+2. **By hand in an interactive Claude Code session** (owner): the prompts as
+   slash commands and the resources. A headless `claude -p` session against
+   the built 0.1.0 package did drive check_environment, lint, set_keyword,
+   smoke_test and run_command on the tiny fixture (2026-10-02).
+3. **Milestone 5:** the evaluation harness (`evals/tasks/*.yaml`,
+   `evals/run_evals.py`, `evals/RESULTS.md`); see `BPP-MCP-BUILD.md`.
 
 Possible small additions, not in the spec: a way to remove a keyword from a
-control file; a `subset_loci` + `smoke_test` shortcut for very large data.
+control file; a `subset_loci` + `smoke_test` shortcut for very large data;
+`CLAUDE_PROJECT_DIR` as a project-root fallback; PyPI.
 
 ## Related changes made in other repos
 

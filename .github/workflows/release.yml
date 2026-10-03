@@ -1,0 +1,61 @@
+name: release
+
+# Push a tag vX.Y.Z (matching __version__) to publish a GitHub release with
+# the wheel, the sdist, bpp-mcp.tar.gz (the sdist under a fixed name, which
+# install.sh downloads from releases/latest) and install.sh.
+# "Run workflow" builds and tests the same way without publishing anything.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: tag matches the package version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          version=$(sed -n 's/^__version__ = "\(.*\)"$/\1/p' src/bpp_mcp/__init__.py)
+          [ "v$version" = "$GITHUB_REF_NAME" ] || {
+            echo "tag $GITHUB_REF_NAME does not match __version__ $version" >&2; exit 1; }
+      - name: build
+        run: |
+          python -m pip install build
+          python -m build
+          cp dist/bpp_mcp-*.tar.gz dist/bpp-mcp.tar.gz
+          cp install.sh dist/
+          cd dist && sha256sum * > SHA256SUMS && cat SHA256SUMS
+      - name: test the built wheel
+        run: |
+          python -m venv /tmp/venv
+          /tmp/venv/bin/pip install "$(ls dist/*.whl)[test]"
+          /tmp/venv/bin/bpp-mcp install-tools
+          /tmp/venv/bin/python -m pytest -v -rs
+      - name: install.sh installs the built sdist
+        run: |
+          BPP_MCP_SPEC="$PWD/dist/bpp-mcp.tar.gz" sh ./install.sh
+          "$("$HOME/.local/bin/uv" tool dir --bin)/bpp-mcp" --version
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --title "bpp-mcp $GITHUB_REF_NAME" --generate-notes
