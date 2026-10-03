@@ -1,0 +1,48 @@
+{
+  "_comment": "Pinned BPP tool releases that this bpp-mcp version is tested with. `version` is also the minimum check_environment accepts. sha256 values are verified on download; they match each release's SHA256SUMS where one is published.",
+  "bpp-seqs": {
+    "repo": "bpp/bpp-seqs",
+    "tag": "v0.1.5",
+    "version": "0.1.5",
+    "assets": {
+      "linux-x86_64": {"name": "bpp-seqs-0.1.5-linux-x86_64.tar.gz", "sha256": "3b3bf7ac227cb947359d57fa29ecef3b1e9bb661eb197739020b0e44e6fb2ffa"}
+    }
+  },
+  "bpp-tree": {
+    "repo": "bpp/bpp-trees",
+    "tag": "v0.1.2",
+    "version": "0.1.2",
+    "assets": {
+      "linux-x86_64": {"name": "bpp-tree-0.1.2-linux-x86_64.tar.gz", "sha256": "d25bac4e741360594635065e6153dffc9362c7ee35485f89ab6492c42f1ef766"},
+      "macos-arm64": {"name": "bpp-tree-0.1.2-macos-arm64.tar.gz", "sha256": "37b6aaa0baefb828637cd603f7f64c59b1eee93df73133de0abea43defdf944a"},
+      "macos-x86_64": {"name": "bpp-tree-0.1.2-macos-x86_64.tar.gz", "sha256": "11fa243ff3a94707f59d6d4b44c1aa4078a110a9685db1cab40c3481ae33714a"}
+    }
+  },
+  "bpp-lint": {
+    "repo": "bpp/bpp-lint",
+    "tag": "v0.3.5",
+    "version": "0.3.5",
+    "assets": {
+      "linux-x86_64": {"name": "bpp-lint-0.3.5-linux-x86_64.tar.gz", "sha256": "6f3cff09f04aff418e4516e46cced3644c534d696313c956f0dbcd2c2ed9ea5e"},
+      "macos-arm64": {"name": "bpp-lint-0.3.5-macos-arm64.tar.gz", "sha256": "34f6ca952b4fa4cd3d8846db227961b7a0cb7eb2d26cc55d673f4404730fc458"},
+      "macos-x86_64": {"name": "bpp-lint-0.3.5-macos-x86_64.tar.gz", "sha256": "38af23c59fe115be0d70965739dde45c39012b85fd3c0d20b528d9b9de5e6924"}
+    }
+  },
+  "bpp-docs": {
+    "repo": "bpp/bpp-docs",
+    "tag": null,
+    "version": "0.1.0",
+    "assets": {}
+  },
+  "bpp": {
+    "repo": "bpp/bpp",
+    "tag": "v4.8.7",
+    "version": "4.8.7",
+    "assets": {
+      "linux-x86_64": {"name": "bpp-4.8.7-linux-x86_64.tar.gz", "sha256": "577306b8dafa80114d09e61f460633dd567eff9c67d5f878bbc7ae9d74cf69f2"},
+      "linux-aarch64": {"name": "bpp-4.8.7-linux-aarch64.tar.gz", "sha256": "6f805d8fe2300826fbc55a92fbbe3d2e5428893253673ad5804c3610fc9b08a2"},
+      "macos-arm64": {"name": "bpp-4.8.7-macos-aarch64.tar.gz", "sha256": "a4f2d322a1cfa3cef34e790506f6a776fefbae5e502f442b31f035a5351e91b6"},
+      "macos-x86_64": {"name": "bpp-4.8.7-macos-x86_64.tar.gz", "sha256": "5396f76f05e76ef53040daaf119c83818c8cd998e1892defb15025b6a7248410"}
+    }
+  }
+}

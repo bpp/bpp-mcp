@@ -18,6 +18,11 @@ the tool instead.
   sequence redaction. Every tool result goes through it or `sanitize()`.
 - `src/bpp_mcp/sandbox.py`: project root (`BPP_MCP_ROOT`, or `set_project`
   under `BPP_MCP_PROJECTS_DIR`); every path goes through `sandbox.resolve()`.
+- `src/bpp_mcp/install.py` + `toolset.json`: `bpp-mcp install-tools`, which
+  downloads the pinned tool releases (sha256-checked) into
+  `~/.local/share/bpp-mcp` (`$BPP_MCP_HOME`). The pinned versions are also
+  the minimums `check_environment` enforces. `install.sh` bootstraps uv,
+  bpp-mcp and the tools in one command.
 - `src/bpp_mcp/tools/*.py`: tool functions. Docstrings are written for the
   model: what it does, when to call it, what to do next, key output fields.
 - `src/bpp_mcp/workarounds.py` (milestone 2): every patch for an upstream bug,

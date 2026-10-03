@@ -6,17 +6,10 @@ import platform
 import re
 from pathlib import Path
 
-from .. import __version__, runner, sandbox
+from .. import __version__, install, runner, sandbox
 
-# (binary, minimum version). Minimums are the versions this server was
-# written against; older ones lack JSON fields or flags the tools rely on.
-TOOLS: list[tuple[str, str]] = [
-    ("bpp-seqs", "0.2.0"),
-    ("bpp-tree", "0.1.2"),
-    ("bpp-lint", "0.3.5"),
-    ("bpp-docs", "0.1.0"),
-    ("bpp", "4.8.7"),
-]
+# (binary, minimum version): the pinned release versions in toolset.json.
+TOOLS: list[tuple[str, str]] = [(name, spec["version"]) for name, spec in install.MANIFEST.items()]
 
 
 def parse_version(name: str, text: str) -> str | None:
@@ -64,7 +57,9 @@ def check_environment() -> dict:
       directory is set. If false, read `problems` and help the user fix them
       before doing anything else; tell them the exact `install_hint` command.
     - `tools.<name>`: `found`, `path`, `version`, `minimum_version`, `ok`, and
-      `problem` / `install_hint` when something is wrong.
+      `problem` / `install_hint` when something is wrong. Most tools are
+      installed by the user running `bpp-mcp install-tools` in a terminal
+      (no root needed); you cannot run it for them.
     - `project_root`: the only directory the tools can read or write. Every
       path you pass to other tools is relative to it. If it is null, no
       project is set: ask the user which project folder to use and call

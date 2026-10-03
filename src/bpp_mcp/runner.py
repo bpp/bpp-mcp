@@ -18,6 +18,8 @@ from typing import Any
 
 from mcp.server.mcpserver.exceptions import ToolError
 
+from . import install
+
 DEFAULT_TIMEOUT = 300
 MAX_TEXT = 8000          # chars of raw stdout/stderr returned
 MAX_STR = 2000           # chars of any single string inside a report
@@ -29,16 +31,16 @@ MAX_RESULT = 60000       # chars of the whole serialized report
 EXTRA_DIRS = ["/opt/homebrew/bin", "/usr/local/bin", "/home/linuxbrew/.linuxbrew/bin",
               "~/.linuxbrew/bin", "~/.local/bin"]
 
-INSTALL_HINTS = {
-    "bpp": "build from source: https://github.com/bpp/bpp",
-}
-
 # IUPAC nucleotide codes plus gap/missing; 31+ in a row is treated as sequence.
 _SEQ_RUN = re.compile(r"[ACGTUNRYKMSWBDHVacgtunrykmswbdhv?\-.]{31,}")
 
 
 def install_hint(name: str) -> str:
-    return INSTALL_HINTS.get(name, f"brew install bpp/tap/{name}")
+    if install.available(name):
+        return "run `bpp-mcp install-tools` in a terminal"
+    if name in install.MANIFEST:
+        return install.source_hint(name)
+    return f"install {name} and put it on PATH"
 
 
 def _env_override(name: str) -> str:
@@ -46,12 +48,16 @@ def _env_override(name: str) -> str:
 
 
 def find(name: str) -> str | None:
-    """Path of binary ``name``: $BPP_MCP_<NAME>, then PATH, then EXTRA_DIRS."""
+    """Path of binary ``name``.
+
+    Order: $BPP_MCP_<NAME>; the folder `bpp-mcp install-tools` installs into
+    (the tested versions); PATH; EXTRA_DIRS.
+    """
     override = os.environ.get(_env_override(name))
     if override:
         p = Path(override).expanduser()
         return str(p) if p.is_file() and os.access(p, os.X_OK) else None
-    found = shutil.which(name)
+    found = shutil.which(name, path=str(install.bin_dir())) or shutil.which(name)
     if found:
         return found
     extra = os.pathsep.join(str(Path(d).expanduser()) for d in EXTRA_DIRS)
@@ -62,8 +68,8 @@ def require(name: str) -> str:
     path = find(name)
     if not path:
         raise ToolError(
-            f"'{name}' was not found (looked on PATH, in {', '.join(EXTRA_DIRS)}, and "
-            f"${_env_override(name)}). Install it with: {install_hint(name)}. "
+            f"'{name}' was not found (looked in ${_env_override(name)}, {install.bin_dir()}, "
+            f"PATH, and {', '.join(EXTRA_DIRS)}). To install it: {install_hint(name)}. "
             "Then call check_environment again.")
     return path
 

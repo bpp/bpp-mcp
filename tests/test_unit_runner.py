@@ -132,5 +132,14 @@ def test_find_extra_dirs(tmp_path, monkeypatch):
 def test_require_missing(monkeypatch):
     monkeypatch.setenv("PATH", "/nonexistent")
     monkeypatch.setattr(runner, "EXTRA_DIRS", [])
-    with pytest.raises(ToolError, match="brew install bpp/tap/bpp-qqq"):
+    with pytest.raises(ToolError, match="install bpp-qqq and put it on PATH"):
         runner.require("bpp-qqq")
+
+
+def test_install_hints(monkeypatch):
+    from bpp_mcp import install
+    monkeypatch.setattr(install, "platform_key", lambda *a: "linux-x86_64")
+    assert "bpp-mcp install-tools" in runner.install_hint("bpp-lint")
+    assert runner.install_hint("bpp-docs") == "build it from source: https://github.com/bpp/bpp-docs"
+    monkeypatch.setattr(install, "platform_key", lambda *a: "macos-arm64")
+    assert "github.com/bpp/bpp-seqs" in runner.install_hint("bpp-seqs")

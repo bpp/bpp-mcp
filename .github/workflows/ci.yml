@@ -21,3 +21,32 @@ jobs:
       # Milestone 1: no bpp binaries are installed in CI yet. The e2e tests
       # here need none; later ones skip themselves when a binary is missing.
       - run: python -m pytest -v
+
+  install:
+    # Runs install.sh from this checkout, as a user would, and checks that
+    # every tool with a prebuilt release for the runner installs and runs.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: install.sh
+        run: BPP_MCP_SPEC="$GITHUB_WORKSPACE" sh ./install.sh
+      - name: check installed tools
+        run: |
+          PY="$("$HOME/.local/bin/uv" tool dir)/bpp-mcp/bin/python"
+          cd "$RUNNER_TEMP" && env -i HOME="$HOME" PATH=/usr/bin:/bin "$PY" - <<'PY'
+          from bpp_mcp import install
+          from bpp_mcp.tools import env
+          out = env.check_environment()
+          bad = []
+          for name, info in out["tools"].items():
+              want = install.available(name)
+              print(f"{name}: release for this platform={want}, found={info['found']}, "
+                    f"version={info.get('version')}, ok={info.get('ok')}")
+              if want and not info.get("ok"):
+                  bad.append(name)
+          assert not bad, f"installed but not working: {bad}"
+          PY

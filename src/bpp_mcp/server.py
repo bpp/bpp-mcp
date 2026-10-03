@@ -6,6 +6,8 @@ of steps, keeps every path inside the project directory, and runs short tests.
 """
 from __future__ import annotations
 
+import sys
+
 from mcp.server.mcpserver import MCPServer
 from mcp.types import ToolAnnotations
 
@@ -59,8 +61,26 @@ if sandbox.current.projects_dir is not None:
                                          idempotentHint=True, openWorldHint=False))(env.set_project)
 
 
-def main() -> None:
-    mcp.run()
+USAGE = """\
+usage: bpp-mcp                  start the MCP server on stdio (hosts run this)
+       bpp-mcp install-tools    download the BPP command-line tools (no root needed)
+       bpp-mcp --version
+"""
+
+
+def main(argv: list[str] | None = None) -> None:
+    argv = sys.argv[1:] if argv is None else argv
+    if not argv:
+        mcp.run()
+    elif argv[0] == "install-tools":
+        from . import install
+        sys.exit(install.main(argv[1:]))
+    elif argv[0] in ("--version", "-V"):
+        print(f"bpp-mcp {__version__}")
+    elif argv[0] in ("--help", "-h", "help"):
+        print(USAGE, end="")
+    else:
+        sys.exit(f"bpp-mcp: unknown command {argv[0]!r}\n{USAGE}")
 
 
 if __name__ == "__main__":

@@ -67,7 +67,7 @@ def test_missing_old_and_unreadable(fake_env):
     t = out["tools"]
     assert out["ready"] is False
     assert t["bpp-docs"] == {"found": False, "minimum_version": "0.1.0",
-                             "install_hint": "brew install bpp/tap/bpp-docs"}
+                             "install_hint": runner.install_hint("bpp-docs")}
     assert t["bpp-lint"]["ok"] is False and "older" in t["bpp-lint"]["problem"]
     assert t["bpp-tree"]["ok"] is False and t["bpp-tree"]["version"] is None
     assert len(out["problems"]) == 3
