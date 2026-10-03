@@ -4,6 +4,9 @@ MCP server that guides a BPP user from raw data to a linted, smoke-tested
 control file. The full spec is `BPP-MCP-BUILD.md`; read it before changing
 anything. `reference/` holds the earlier prototype and the bpp-lint fix spec.
 
+**Current status and next steps: `claude_next.md`. Read it at the start of a
+session, and update it when a milestone or decision changes.**
+
 **Design rule:** BPP knowledge (syntax, defaults, prior heuristics) belongs in
 bpp-seqs / bpp-tree / bpp-lint / bpp-docs, not here. This server calls them
 with `--json`, passes their reports through, orders the steps, confines paths
