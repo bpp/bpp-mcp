@@ -96,8 +96,8 @@ solution, or that test fails.
 `harness.py` talks to a model only through two small interfaces:
 `Model.start(system, tools)` returns a `Chat` with `send_user(text)` and
 `send_tool_results(results)`, each returning a `Turn` (text, tool calls,
-usage). `AnthropicModel` is the first implementation. To compare another
-provider, or a local model's agent loop, add a class with those methods and a
+usage). `AnthropicModel` is the first implementation. To use another
+provider, add a class with those methods and a
 branch in `make_model()`, then run with `--model yourprovider:name`. The
 simulated user goes through the same interface (`--user-model`), and should be
 kept the same across the models being compared.

@@ -126,6 +126,10 @@ end-to-end, and the privacy check covers every registered tool.
   decide a pass. Providers plug in through `Model` / `Chat` in
   `evals/harness.py`; only `AnthropicModel` exists. Transcripts go to
   `evals/runs/` (git-ignored).
+- **No comparison with the local bpp-agent model** (owner, 2026-10-03). The
+  spec names that comparison as a purpose of the harness; it is dropped. The
+  evaluation is only about whether a frontier model does the job with this
+  server. Don't write a local-model adapter.
 - **Every scenario has a reference solution** in `evals/reference.py`, replayed
   with no model by `tests/test_evals.py` (needs pyyaml, which is in the
   `test` extra). A new scenario without one fails the tests.
@@ -147,8 +151,7 @@ end-to-end, and the privacy check covers every registered tool.
    `AnthropicModel` has not yet made a real API call; run one scenario first
    (`--tasks tiny_bpp_format`). Read the transcripts of any failures before
    concluding anything, then commit `RESULTS.md`.
-4. After the baseline: more trials per scenario, a second model for
-   comparison, and a `Model` class for the local bpp-agent model.
+4. After the baseline: more trials per scenario.
 
 Possible small additions, not in the spec: a way to remove a keyword from a
 control file; a `subset_loci` + `smoke_test` shortcut for very large data;
